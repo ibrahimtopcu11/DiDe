@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <link rel="stylesheet" href="/index.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Yükleniyor…</title>
+  <link id="site-favicon" rel="icon" href="/favicon.ico" />
+
+  <!-- Preload icon assets -->
+  <link rel="preload" as="image" href="/camera.svg" />
+  <link rel="preload" as="image" href="/video.svg" />
+  <link rel="preload" as="image" href="/mic.svg" />
+  <link rel="preload" as="image" href="/download.svg" />
+  <link rel="preload" as="image" href="/back.svg" />
+
+  <!-- Leaflet & MarkerCluster -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+
+  <style>
+    :root.theme-light{
+      --bg:#fafafa; --surface:#ffffff; --text:#111827; --muted:#6b7280;
+      --border:#e5e7eb; --border-soft:#eee; --shadow-sm:0 1px 2px rgba(0,0,0,.06);
+      --shadow-md:0 6px 16px rgba(0,0,0,.08);
+    }
+    :root.theme-dark{
+      --bg:#0b1020; --surface:#0f172a; --text:#e5e7eb; --muted:#9ca3af;
+      --border:#1f2937; --border-soft:#1f2937;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.3); --shadow-md:0 6px 16px rgba(0,0,0,.35);
+    }
+    body{background:var(--bg); color:var(--text);}
+    :root.theme-dark table{ background: var(--surface); }
+    :root.theme-dark .auth .btn{ background:#fff!important; color:#000!important; border-color:var(--border); }
+
+    .icon-btn{
+      appearance:none; background:#fff; border:1px solid var(--border);
+      width:36px; height:36px; padding:0; border-radius:8px;
+      display:inline-flex; align-items:center; justify-content:center;
+      line-height:0; cursor:pointer; box-shadow:var(--shadow-sm);
+    }
+    .icon-btn svg{ width:22px; height:22px; display:block; }
+    .icon-btn img{ width:22px; height:22px; display:block; }
+
+    .info{
+      background:var(--surface);
+      color:var(--text);
+      border:1px solid var(--border);
+      border-radius:10px;
+      padding:10px 12px;
+      box-shadow:var(--shadow-sm);
+    }
+
+    .leaflet-popup-content .btn{ 
+      background:#fff; color:#111; border:1px solid var(--border); 
+      padding:.35rem .7rem; border-radius:10px; 
+    }
+    .leaflet-popup-content .btn.ghost{ background:#fff; color:#111; border-color:var(--border); }
+    .leaflet-popup-content .btn.danger{ background:#fff; color:#b91c1c; border-color:#fecaca; }
+
+    .muted{ color:var(--muted); }
+    #map{ min-height: 420px; }
+
+    .thumb-grid{
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap:8px;
+      margin-top:6px;
+    }
+    .thumb-tile{
+      border:1px solid var(--border);
+      background:var(--surface);
+      border-radius:10px;
+      padding:4px;
+      box-shadow:var(--shadow-sm);
+      display:flex; align-items:center; justify-content:center;
+      max-height:180px;
+      overflow:hidden;
+    }
+    .thumb-tile img, .thumb-tile video{
+      width:100%; height:100%; object-fit:cover; border-radius:6px;
+      display:block;
+    }
+
+    .popup-photos, .popup-videos{
+      margin:.4rem 0;
+    }
+    .popup-photos .grid, .popup-videos .grid{
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+      gap:6px;
+    }
+    .popup-photo-link, .popup-video-link{ 
+      display:block; 
+      border:1px solid var(--border);
+      border-radius:8px;
+      overflow:hidden;
+      transition: all 0.2s ease;
+    }
+    .popup-photo-link:hover, .popup-video-link:hover{
+      box-shadow:var(--shadow-md);
+      transform:translateY(-1px);
+    }
+    .popup-photo-link img{
+      width:100%; height:100px; object-fit:cover; border-radius:8px;
+      display:block;
+    }
+    .popup-video-link video{
+      width:100%; height:120px; object-fit:cover; border-radius:8px;
+      display:block;
+    }
+
+
+    .modal{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .modal.show{ display:flex; }
+    .modal .box{ background:var(--surface); border:1px solid var(--border); border-radius:12px; width:min(560px, 92vw); padding:12px; box-shadow:var(--shadow-md); }
+    .modal .head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .modal video, .modal canvas{ width:100%; border-radius:10px; background:#000; }
+    .row.gap6{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+
+    .admin-card h3{ margin-top:0; }
+    .admin-grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+    }
+    @media (min-width: 980px){
+      .admin-grid{
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    table{ width:100%; border-collapse:collapse; }
+    th, td{ border:1px solid var(--border); padding:8px; vertical-align:top; position:relative; }
+    th{ background:var(--surface); text-align:left; }
+    body.role-supervisor.supervisor-mode-form #admin-card{ display: none !important; }
+
+    .events-map-wrap{ margin-top:10px; position:relative; }
+    #events-map{ width:100%; height:420px; }
+    .map-export-btn{
+      position:absolute; right:10px; top:10px;
+      width:40px; height:40px; border-radius:8px; border:1px solid var(--border);
+      background:#fff; display:inline-flex; align-items:center; justify-content:center;
+      box-shadow:var(--shadow-sm); cursor:pointer;
+    }
+    .map-export-btn img{ width:22px; height:22px; display:block; }
+    .table-export-btn{
+      display:inline-flex!important;
+      align-items:center;
+      justify-content:center;
+      min-width:34px!important;
+      min-height:34px!important;
+      padding:6px!important;
+      background:#fff!important;
+      border:1px solid var(--border)!important;
+      border-radius:8px!important;
+      cursor:pointer;
+      transition:all 0.2s ease;
+      vertical-align:middle;
+      margin-left:8px;
+      box-shadow:var(--shadow-sm);
+    }
+    .table-export-btn:hover{
+      box-shadow:var(--shadow-md);
+      transform:translateY(-1px);
+      border-color:var(--primary);
+    }
+    .table-export-btn img{
+      width:18px;
+      height:18px;
+      display:block;
+    }
+    .filter-dropdown{
+      position:absolute; top:100%; left:0; background:var(--surface);
+      border:1px solid var(--border); border-radius:8px; padding:8px;
+      box-shadow:var(--shadow-md); z-index:99999; min-width:200px;
+      max-height:300px; overflow-y:auto; display:none;
+    }
+    .filter-dropdown.show{ display:block; }
+
+    .card-title-line{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      margin-bottom:12px;
+    }
+    .back-btn{
+      width:30px;
+      height:30px;
+      border:none;
+      background:transparent;
+      padding:0;
+      cursor:pointer;
+      outline:none;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .back-btn img{
+      width:24px;
+      height:24px;
+      display:block;
+    }
+    .back-btn:focus{
+      outline:none;
+      box-shadow:none;
+    }
+
+    .map-legend{
+      position:absolute;
+      right:10px;
+      bottom:10px;
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:8px;
+      padding:8px 10px;
+      box-shadow:var(--shadow-md);
+      max-width:210px;
+      z-index:400;
+    }
+    .map-legend h5{
+      font-size:0.9rem;
+      margin:0 0 6px;
+    }
+    .map-legend .legend-row{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      margin-bottom:4px;
+      font-size:0.75rem;
+      flex-wrap:wrap;
+    }
+    .map-legend .legend-icon{
+      width:20px;
+      height:20px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+    @media (max-width: 992px){
+      .map-legend{
+        max-width:160px;
+        font-size:0.7rem;
+        right:6px;
+        bottom:6px;
+      }
+      .map-legend h5{ font-size:0.78rem; }
+    }
+    @media (max-width: 576px){
+      .map-legend{
+        max-width:140px;
+        padding:6px 8px;
+      }
+    }
+    
+    #btn-add-type {
+      padding: 0.35rem 0.7rem !important;
+      font-size: 0.9rem !important;
+      height: auto !important;
+      min-height: 32px !important;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="brand">
+        <img id="site-logo" alt="logo" class="hidden" />
+        <h1 id="site-title"></h1>
+      </div>
+      <div class="auth">
+        <button id="btn-use-location-header" class="icon-btn hidden" type="button" title="Use My Positioon"
+          onclick="if(window.geoFindMeToggle){geoFindMeToggle();}const f=document.getElementById('olay-card');if(f){f.classList.remove('hidden');}">
+          <img src="/useposition.svg" alt="" onerror="this.style.display='none';" />
+        </button>
+        <button id="btn-theme-toggle" class="icon-btn" type="button" aria-label="Theme"></button>
+        <span id="whoami" class="hidden"></span>
+        <button id="btn-open-login" class="btn">Log in</button>
+        <button id="btn-logout" class="btn hidden">Log Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div id="map-wrap" class="map-wrap" style="position:relative;">
+        <div id="map" aria-label="Map"></div>
+      </div>
+    </section>
+
+    <aside class="stack">
+      <!-- GİRİŞ -->
+      <section id="login-card" class="card">
+        <div class="card-title-line">
+          <button class="back-btn" type="button" title="Geri" onclick="history.back();">
+            <img src="/back.svg" alt="Geri" />
+          </button>
+          <h3 style="margin:0;">Log in</h3>
+        </div>
+        <div id="login-error" class="error hidden"></div>
+        <label for="login-user">Username or email</label>
+        <input id="login-user" type="text" placeholder="Username or email"
+               autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
+        <label for="login-pass">Password</label>
+        <div class="input-wrap">
+          <input id="login-pass" type="password" placeholder="••••••••" autocomplete="new-password" />
+          <button type="button" class="eye-btn" data-eye="login-pass" title="Show/Hide">👁</button>
+        </div>
+        <div id="totp-block" class="hidden">
+          <label for="login-totp">Verification Code (2FA)</label>
+          <input id="login-totp" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="123456" autocomplete="one-time-code" />
+          <div class="muted">Mandatory for Admin/Supervisor.</div>
+        </div>
+        <button id="btn-login" class="btn primary" style="margin-top:10px;">Log in</button>
+        <div class="muted" style="margin-top:8px;">
+          <a href="#" id="goto-forgot">I forgot my password</a> •
+          Don't have an account? <a href="#" id="toggle-register">Sign up</a>
+        </div>
+      </section>
+
+      <!-- KAYIT -->
+      <section id="register-card" class="card hidden">
+        <div class="card-title-line">
+          <button class="back-btn" type="button" title="Go back" onclick="document.getElementById('register-card').classList.add('hidden');document.getElementById('login-card').classList.remove('hidden');">
+            <img src="/back.svg" alt="Go back" />
+          </button>
+          <h3 style="margin:0;">Sign Up</h3>
+        </div>
+        <div id="register-error" class="error hidden"></div>
+        <div id="allowed-domain" class="muted hidden"></div>
+        <label for="reg-username">User name</label>
+        <input id="reg-username" type="text" placeholder="user name" autocomplete="off" />
+        <label for="reg-email">Email</label>
+        <input id="reg-email" type="email" placeholder="example@domain.com" autocomplete="off" />
+        <label for="reg-pass">Password</label>
+        <div class="input-wrap">
+          <input id="reg-pass" type="password" placeholder="must be at least 8 characters, contain uppercase/lowercase letters and punctuation" autocomplete="new-password" />
+          <button type="button" class="eye-btn" data-eye="reg-pass" title="Show/Hide">👁</button>
+        </div>
+        <div class="row">
+          <div><label for="reg-name">Name</label><input id="reg-name" type="text" autocomplete="off" placeholder="Your name" /></div>
+          <div><label for="reg-surname">Surname</label><input id="reg-surname" type="text" autocomplete="off" placeholder="your surname" /></div>
+        </div>
+        <button id="btn-register" class="btn primary" style="margin-top:10px;">Sign up</button>
+        <div class="muted" style="margin-top:8px;"><a href="#" id="toggle-login">Already have an account? Log in</a></div>
+      </section>
+
+      <!-- ŞİFRE SIFIRLA -->
+      <section id="forgot-card" class="card hidden">
+        <div class="card-title-line">
+          <button class="back-btn" type="button" title="Geri" onclick="document.getElementById('forgot-card').classList.add('hidden');document.getElementById('login-card').classList.remove('hidden');">
+            <img src="/back.svg" alt="Go back" />
+          </button>
+          <h3 style="margin:0;">Reset My Password</h3>
+        </div>
+        <div class="muted" style="margin:-2px 0 6px;">Reset your password in 3 steps: Email → Code → New Password</div>
+        <div id="forgot-error" class="error hidden"></div>
+        <div id="fg-email-row">
+          <label for="fg-email">Email</label>
+          <input id="fg-email" type="email" placeholder="registered email" autocomplete="email" />
+          <div class="inline" style="gap:8px; margin:8px 0;">
+            <button id="btn-forgot-start" class="btn">Send Code</button>
+          </div>
+        </div>
+        <div id="fg-code-row" class="hidden">
+          <label for="fg-code">Verification Code</label>
+          <input id="fg-code" type="text" inputmode="numeric" pattern="[0-9]*" placeholder="123456" autocomplete="one-time-code" />
+          <div class="inline" style="gap:8px; margin-top:8px;">
+            <button id="btn-forgot-verify" class="btn">Verify Code</button>
+          </div>
+        </div>
+        <div id="fg-pass1-row" class="hidden">
+          <label for="fg-pass1">New Password</label>
+          <input id="fg-pass1" type="password" placeholder="New Password" autocomplete="new-password" />
+        </div>
+        <div id="fg-pass2-row" class="hidden">
+          <label for="fg-pass2">New Password (Again)</label>
+          <input id="fg-pass2" type="password" placeholder="New Password (Again)" autocomplete="new-password" />
+          <div class="inline" style="gap:8px; margin-top:8px;">
+            <button id="btn-forgot-reset" class="btn primary">Reset Password</button>
+          </div>
+        </div>
+        <div class="inline" style="gap:8px; margin-top:10px;">
+          <a href="#" id="back-to-login" class="btn ghost">Home page</a>
+        </div>
+      </section>
+
+      <!-- OLAY FORMU -->
+      <section id="olay-card" class="card hidden">
+        <div class="card-title-line">
+          <button class="back-btn" type="button" title="Geri" onclick="if(typeof restoreMapViewFromOverlay==='function')restoreMapViewFromOverlay();">
+            <img src="/back.svg" alt="Geri" />
+          </button>
+          <h3 style="margin:0;">Incident Reporting Form</h3>
+        </div>
+        <div id="error-message" class="error hidden"></div>
+
+        <label for="olay_turu">Event Type</label>
+        <select id="olay_turu"><option value="">-- Select --</option></select>
+
+        <label for="aciklama" style="margin-top:6px;">Explanation</label>
+        <textarea id="aciklama" rows="4" placeholder="Açıklama girin..." style="resize:none;"></textarea>
+
+        <div class="row coord-row">
+          <div><label for="lat">Latitude</label><input id="lat" type="text" placeholder="Select from map" /></div>
+          <div><label for="lng">Longitude</label><input id="lng" type="text" placeholder="Select from map" /></div>
+        </div>
+
+        <div class="inline" style="gap:8px; margin:8px 0;">
+          <button id="btn-add-photo" class="icon-btn" title="take photo" aria-label="take photo">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 4h6l1.2 2H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.8L9 4zM12 18a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0-2.2a2.8 2.8 0 1 1 0-5.6 2.8 2.8 0 0 1 0 5.6z"/></svg>
+          </button>
+          <button id="btn-add-video" class="icon-btn" title="Record video" aria-label="Record video">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 7h11a2 2 0 0 1 2 2v1.4l4-2.3a1 1 0 0 1 1.5.86v7.08a1 1 0 0 1-1.5.86l-4-2.3V15a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/></svg>
+          </button>
+          <button type="button" id="btn-use-location" class="icon-btn" title="Use My Position" aria-label="Use My Position">
+
+          </button>
+          <input id="file-photo" type="file" accept="image/*" capture="environment" class="hidden" />
+          <input id="file-video" type="file" accept="video/*" capture="environment" class="hidden" />
+        </div>
+
+        <div class="thumbs">
+          <div id="photo-list" class="thumb-grid"></div>
+          <div id="video-list" class="thumb-grid" style="margin-top:4px;"></div>
+        </div>
+
+        <div class="inline" style="gap:8px; margin-top:6px;">
+          <button type="button" id="btn-stop-live" class="btn ghost hidden">Unfollow</button>
+        </div>
+        <div class="inline" style="gap:10px; margin-top:8px;">
+          <button type="button" id="submit-btn" class="btn primary">Send</button>
+          <button type="button" id="cancel-edit-btn" class="btn ghost hidden">Cancel</button>
+          <span id="edit-hint" class="muted hidden">Arrangement: <span id="edit-id"></span></span>
+        </div>
+      </section>
+
+      <!-- YÖNETİM PANELİ -->
+      <section id="admin-card" class="card admin-card hidden">
+        <h3>Administration Panel</h3>
+
+        <div class="tab-nav">
+          <button class="tab-btn active" data-tab="types-tab">Event Types</button>
+          <button class="tab-btn" data-tab="users-tab">Users</button>
+          <button class="tab-btn" data-tab="events-tab">Events</button>
+        </div>
+
+
+        <div id="types-tab" class="tab-content active">
+          <div class="panel">
+            <div style="margin:6px 0;">
+              <div style="margin-bottom:8px;">
+                <input id="new-type-name" type="text" placeholder="New event type name" style="width:100%;" />
+              </div>
+              <div style="margin-bottom:8px;">
+                <label style="display:block; margin-bottom:6px; font-weight:500;">Is it beneficial to citizens?</label>
+                <label style="display:inline-flex; align-items:center; gap:4px; margin-right:16px;">
+                  <input type="radio" name="new-type-good" id="new-type-good-yes" value="true" checked style="margin:0;" />
+                  <span>Beneficial</span>
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:4px;">
+                  <input type="radio" name="new-type-good" id="new-type-good-no" value="false" style="margin:0;" />
+                  <span>Don't beneficial</span>
+                </label>
+              </div>
+              <div>
+                <button id="btn-add-type" class="btn" style="padding:0.35rem 0.7rem; font-size:0.9rem;">Add</button>
+              </div>
+            </div>
+            <div class="table-wrap" style="overflow:auto;">
+              <table id="types-table">
+                <thead>
+                  <tr>
+                    <th>
+                      Name
+                      <span class="filter-icon" data-column="name" title="Filtrele">▼</span>
+                      <div class="filter-dropdown" data-column="name"></div>
+                    </th>
+                    <th>
+                      Is it beneficial?
+                      <span class="filter-icon" data-column="good" title="Filtrele">▼</span>
+                      <div class="filter-dropdown" data-column="good"></div>
+                    </th>
+                    <th>
+                      Added by
+                      <span class="filter-icon" data-column="creator" title="Filtrele">▼</span>
+                      <div class="filter-dropdown" data-column="creator"></div>
+                    </th>
+                    <th>Process</th>
+                  </tr>
+                </thead>
+                <tbody id="type-tbody"></tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <div class="pagination-info" id="types-pagination-info"></div>
+              <div class="pagination-controls" id="types-pagination-controls"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kullanıcılar Tab -->
+        <div id="users-tab" class="tab-content">
+          <div class="panel">
+            <div class="table-wrap" style="overflow:auto;">
+              <table id="users-table">
+                <thead>
+                  <tr>
+                    <th>
+                      User name
+                      <span class="filter-icon" data-column="username" title="Filtrele">▼</span>
+                      <div class="filter-dropdown" data-column="username"></div>
+                    </th>
+                    <th>
+                      Role
+                      <span class="filter-icon" data-column="role" title="Filtrele">▼</span>
+                      <div class="filter-dropdown" data-column="role"></div>
+                    </th>
+                    <th>
+                      E-mail
+                      <span class="filter-icon" data-column="email" title="Filtrele">▼</span>
+                      <div class="filter-dropdown" data-column="email"></div>
+                    </th>
+                    <th>
+                      Email Verified
+                      <span class="filter-icon" data-column="verified" title="Filtrele">▼</span>
+                      <div class="filter-dropdown" data-column="verified"></div>
+                    </th>
+                    <th>Process</th>
+                  </tr>
+                </thead>
+                <tbody id="user-tbody"></tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <div class="pagination-info" id="users-pagination-info"></div>
+              <div class="pagination-controls" id="users-pagination-controls"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Olaylar Tab -->
+        <div id="events-tab" class="tab-content">
+          <div class="panel">
+            <div id="events-table-wrap" class="table-wrap" style="overflow:auto;">
+              <table id="events-table">
+                <thead>
+                  <tr>
+                    <th>
+                      Type
+                      <span class="filter-icon" data-column="type" title="Filter">▼</span>
+                      <div class="filter-dropdown" data-column="type"></div>
+                    </th>
+                    <th>Explanation</th>
+                    <th>
+                      Added by
+                      <span class="filter-icon" data-column="creator" title="Filter">▼</span>
+                      <div class="filter-dropdown" data-column="creator"></div>
+                    </th>
+                    <th>
+                      Photograph
+                      <span class="filter-icon" data-column="photo" title="Filter">▼</span>
+                      <div class="filter-dropdown" data-column="photo"></div>
+                    </th>
+                    <th>
+                      Video
+                      <span class="filter-icon" data-column="video" title="Filter">▼</span>
+                      <div class="filter-dropdown" data-column="video"></div>
+                    </th>
+                    <th>
+                      Added Date
+                      <span class="filter-icon" data-column="date" title="Filter">▼</span>
+                      <div class="filter-dropdown" data-column="date"></div>
+                    </th>
+                    <th>Process</th>
+                  </tr>
+                </thead>
+                <tbody id="event-tbody"></tbody>
+              </table>
+            </div>
+
+            <div id="events-map-wrap" class="events-map-wrap" aria-label="Filtered event map">
+              <div id="events-map"></div>
+            </div>
+
+            <div class="pagination">
+              <div class="pagination-info" id="events-pagination-info"></div>
+              <div class="pagination-controls" id="events-pagination-controls"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+
+  <!-- FOTO KAMERA MODALI -->
+  <div id="photo-modal" class="modal" aria-hidden="true">
+    <div class="box">
+      <div class="head">
+        <h4>Take Photo</h4>
+        <button id="pm-close" class="btn ghost" type="button">Close</button>
+      </div>
+      <video id="pm-video" playsinline autoplay muted></video>
+      <canvas id="pm-canvas" class="hidden"></canvas>
+      <div class="row gap6" style="margin-top:8px;">
+        <button id="pm-capture" class="btn primary" type="button">Take photo</button>
+        <button id="pm-retake" class="btn ghost hidden" type="button">Again</button>
+        <button id="pm-use" class="btn hidden" type="button">Use</button>
+        <button id="pm-gallery" class="btn" type="button">Gallery</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VİDEO KAMERA MODALI -->
+  <div id="video-modal" class="modal" aria-hidden="true">
+    <div class="box">
+      <div class="head">
+        <h4>Record Video</h4>
+        <button id="vm-close" class="btn ghost" type="button">Close</button>
+      </div>
+      <video id="vm-preview" playsinline autoplay></video>
+      <div class="row gap6" style="margin-top:8px;">
+        <button id="vm-start" class="btn primary" type="button">Start</button>
+        <button id="vm-stop" class="btn danger hidden" type="button">Stop</button>
+        <button id="vm-gallery" class="btn" type="button">Gallery</button>
+      </div>
+    </div>
+  </div>
+  <!-- OLAY TÜRÜ GÜNCELLEME MODALI -->
+  <div id="update-type-modal" class="modal" aria-hidden="true">
+    <div class="box">
+      <div class="head">
+        <h4>Update Event Type</h4>
+        <button id="update-type-cancel-btn" class="btn ghost" type="button">Cancel</button>
+      </div>
+      <div style="margin:12px 0;">
+        <label for="update-type-input">New Event Type Name</label>
+        <input id="update-type-input" type="text" placeholder="Olay türü adı" autocomplete="off" />
+      </div>
+      <div style="margin:12px 0;">
+        <label style="display:block; margin-bottom:6px; font-weight:500;">Is it beneficial to citizens?</label>
+        <label style="display:inline-flex; align-items:center; gap:4px; margin-right:16px;">
+          <input type="radio" name="update-type-good" id="update-type-good-yes" value="true" style="margin:0;" />
+          <span>Beneficial</span>
+        </label>
+        <label style="display:inline-flex; align-items:center; gap:4px;">
+          <input type="radio" name="update-type-good" id="update-type-good-no" value="false" style="margin:0;" />
+          <span>Don't Beneficial</span>
+        </label>
+      </div>
+      <div class="row gap6" style="margin-top:8px;">
+        <button id="update-type-save-btn" class="btn primary" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    if (!('serviceWorker' in navigator)) return;
+    const swCode = `
+      let authToken = null; self.addEventListener('message', (e) => {
+        if (e && e.data && e.data.type === 'SET_TOKEN') {
+          authToken = e.data.token || null;
+        }
+      });
+      function shouldIntercept(url) {
+        try {
+          const u = new URL(url);
+          if (u.origin !== self.location.origin) return false;
+          if (/^\\/uploads\\//.test(u.pathname)) return true;
+          if (/^\\/api\\/olay\\/\\d+\\/(photo|video)(\\/.*)?$/.test(u.pathname)) return true;
+          return false;
+        } catch { return false; }
+      }
+      self.addEventListener('fetch', (event) => {
+        const req = event.request;
+        if (!shouldIntercept(req.url) || !authToken) return;
+        event.respondWith((async () => {
+          const headers = new Headers(req.headers);
+          headers.set('Authorization', 'Bearer ' + authToken);
+          const proxied = new Request(req, { headers });
+          try { return await fetch(proxied); } catch { return fetch(req); }
+        })());
+      });
+    `;
+    const blob = new Blob([swCode], { type: 'text/javascript' });
+    const swUrl = URL.createObjectURL(blob);
+    navigator.serviceWorker.register(swUrl).then(async (reg) => {
+      const sendToken = () => {
+        try {
+          const token = localStorage.getItem('auth_token') || localStorage.getItem('token') || '';
+          (reg.active || reg.waiting)?.postMessage({ type: 'SET_TOKEN', token });
+        } catch {}
+      };
+      if (reg.active) sendToken();
+      navigator.serviceWorker.ready.then(() => sendToken());
+      window.addEventListener('storage', (ev) => {
+        if (ev.key === 'auth_token' || ev.key === 'token') sendToken();
+      });
+      const _setItem = localStorage.setItem.bind(localStorage);
+      localStorage.setItem = function(k, v){
+        _setItem(k, v);
+        if (k === 'auth_token' || k === 'token') { try { sendToken(); } catch {} }
+      };
+    }).catch(() => {});
+  })();
+  </script>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+  <script>
+    (function(){
+      if (!window.L) return;
+      const WORLD_BOUNDS = L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
+      const _map = L.map;
+      L.map = function(id, options){
+        const o = Object.assign({},
+          { maxZoom: 18, minZoom: 2, worldCopyJump: false, maxBounds: WORLD_BOUNDS, maxBoundsViscosity: 1.0 },
+          (options||{})
+        );
+        const m = _map.call(this, id, o);
+        try { m.setMaxBounds(WORLD_BOUNDS); } catch {}
+        return m;
+      };
+      const _tile = L.tileLayer;
+      L.tileLayer = function(url, options){
+        const o = Object.assign({}, { noWrap: true, bounds: WORLD_BOUNDS }, (options||{}));
+        return _tile.call(this, url, o);
+      };
+    })();
+  </script>
+
+  <script defer src="/app.js"></script>
+</body>
+</html>
