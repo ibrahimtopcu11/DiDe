@@ -76,7 +76,7 @@ const translations = {
     // Event Types
     type: 'Tür',
     typeName: 'Tür Adı',
-    good: 'Faydalı',
+    good: 'Faydalı mı?',
     beneficial: 'Faydalı',
     notBeneficial: 'Faydasız',
     beneficialToCitizen: 'Vatandaşa Faydalı',
@@ -329,12 +329,12 @@ const translations = {
     
     // Event Types
     type: 'Type',
-    good: 'Beneficial',
+    good: 'Is it beneficial?',
     typeName: 'Type Name',
     beneficial: 'Beneficial',
-    notBeneficial: 'Not Beneficial',
+    notBeneficial: 'Harmful',
     beneficialToCitizen: 'Beneficial to Citizen',
-    notBeneficialToCitizen: 'Not Beneficial to Citizen',
+    notBeneficialToCitizen: 'Harmful to Citizen',
     isBeneficial: 'Is it beneficial to citizens?',
     newEventTypeName: 'New event type name',
     add: 'Add',
