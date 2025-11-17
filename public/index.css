@@ -1910,3 +1910,17 @@ th:has(#btn-add-type){
   object-fit:cover; 
   border-radius:8px;
 }
+
+
+.filter-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.filter-option.disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+
+.filter-option.disabled span {
+  color: var(--muted);
+}

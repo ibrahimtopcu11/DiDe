@@ -240,6 +240,10 @@ app.get(/^\/uploads\/(.+)$/, (req, res) => {
   return fs.createReadStream(abs).pipe(res);
 });
 
+app.get('/i18n.js', (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'i18n.js'));
+});
+
 app.use(express.static(PUBLIC_DIR));
 
 /* ===================== HELPERS ===================== */

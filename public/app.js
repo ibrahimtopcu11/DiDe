@@ -1,11 +1,41 @@
-/* ----------------- Helpers and app.js ----------------- */
 const FETCH_CREDENTIALS = 'include';
 let currentUser = null;
 let editingEventId = null;
 const eventIndex = new Map();
 
+// i18n fallback functions
+if (typeof window.t !== 'function') {
+  window.t = (key, params) => {
+    let result = key;
+    if (params) {
+      Object.keys(params).forEach(k => {
+        result = result.replace(new RegExp(`{${k}}`, 'g'), params[k]);
+      });
+    }
+    return result;
+  };
+}
+
+if (typeof window.getLanguage !== 'function') {
+  window.getLanguage = () => {
+    try {
+      return localStorage.getItem('language') || 'tr';
+    } catch {
+      return 'tr';
+    }
+  };
+}
+
+if (typeof window.setLanguage !== 'function') {
+  window.setLanguage = (lang) => {
+    try {
+      localStorage.setItem('language', lang);
+    } catch {}
+  };
+}
+
 const DISABLE_TYPE_PICKER = true;         
-const PUBLIC_HIDE_EXPORT_BUTTON = true;  
+const PUBLIC_HIDE_EXPORT_BUTTON = true;
 
 const BODY = document.body;
 function setBodyMode(mode){
@@ -13,13 +43,13 @@ function setBodyMode(mode){
   if (mode) BODY.classList.add(mode);
 }
 
-
 /* --- Developer guards --- */
 const FORCE_DEFAULT_LOGIN_ON_LOAD = true;
 const ALWAYS_REDIRECT_TO_DEFAULT_LOGIN = true;
 
 const AUTH_KEY = 'auth_token';
 let authToken = null;
+
 /* ==================== GLOBAL CONFIG ==================== */
 let APP_CONFIG = {
   siteTitle: null,
@@ -36,19 +66,18 @@ let APP_CONFIG = {
   showGoodEventsOnLogin: null,
   showBadEventsOnLogin: null
 };
+
 async function loadAppConfig() {
   try {
     const resp = await fetch('/api/config');
     if (resp.ok) {
       const config = await resp.json();
-      //Boolean transformations
       if (typeof config.showGoodEventsOnLogin === 'string') {
         config.showGoodEventsOnLogin = config.showGoodEventsOnLogin.toLowerCase() === 'true';
       }
       if (typeof config.showBadEventsOnLogin === 'string') {
         config.showBadEventsOnLogin = config.showBadEventsOnLogin.toLowerCase() === 'true';
       }
-      // Numeric conversions
       if (config.mapInitialLat) config.mapInitialLat = Number(config.mapInitialLat);
       if (config.mapInitialLng) config.mapInitialLng = Number(config.mapInitialLng);
       if (config.mapInitialZoom) config.mapInitialZoom = Number(config.mapInitialZoom);
@@ -58,13 +87,65 @@ async function loadAppConfig() {
       if (config.pageSizeUsers) config.pageSizeUsers = Number(config.pageSizeUsers);
       
       APP_CONFIG = { ...APP_CONFIG, ...config };
-      console.log('[CONFIG] Yüklendi:', APP_CONFIG);
-      createOrUpdateMapFromConfig();
+      
+      if (map) {
+        const minZoom = Number(APP_CONFIG.mapMinZoom) || 2;
+        const lat = Number(APP_CONFIG.mapInitialLat) || 39.9334;
+        const lng = Number(APP_CONFIG.mapInitialLng) || 32.8597;
+        const zoom = Number(APP_CONFIG.mapInitialZoom) || 6;
+        
+        map.setMinZoom(minZoom);
+        map.setMaxZoom(18);
+        map.setView([lat, lng], zoom, { animate: false });
+        map.invalidateSize();
+      } else {
+        createOrUpdateMapFromConfig();
+      }
     }
   } catch (e) {
-    console.error('[CONFIG] Yüklenemedi:', e);
+    console.error('[CONFIG] Could not load:', e);
     if (!map) createOrUpdateMapFromConfig();
   }
+}
+
+function createOrUpdateMapFromConfig() {
+  const minZoom = Number(APP_CONFIG.mapMinZoom);
+  const lat = Number(APP_CONFIG.mapInitialLat);
+  const lng = Number(APP_CONFIG.mapInitialLng);
+  const zoom = Number(APP_CONFIG.mapInitialZoom);
+
+  if (!map) {
+    map = L.map('map', {
+      zoomControl: false,
+      minZoom: minZoom,
+      maxZoom: 18,
+      maxBounds: WORLD_BOUNDS,
+      maxBoundsViscosity: 1.0,
+      worldCopyJump: false
+    }).setView([lat, lng], zoom);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution:'© OpenStreetMap contributors',
+      noWrap: true,
+      bounds: WORLD_BOUNDS
+    }).addTo(map);
+
+    if (!markersLayer) {
+      markersLayer = makeMarkersLayer().addTo(map);
+    }
+
+    fitMapHeight();
+    window.addEventListener('resize', () => {
+      fitMapHeight();
+      map.invalidateSize();
+    });
+  } else {
+    map.setMinZoom(minZoom);
+    map.setMaxZoom(18);
+    map.setView([lat, lng], zoom, { animate: false });
+    map.invalidateSize();
+  }
+  ensureMapLegend(map);
 }
 
 function loadToken() {
@@ -77,7 +158,6 @@ function saveToken(t) {
     else localStorage.removeItem(AUTH_KEY);
   } catch {}
 }
-
 
 (function patchFetch(){
   const _fetch = window.fetch.bind(window);
@@ -93,14 +173,11 @@ function saveToken(t) {
 const qs  = s => document.querySelector(s);
 const qsa = s => Array.from(document.querySelectorAll(s));
 
-
 const show = el => { if (el && el.classList) el.classList.remove('hidden'); };
 const hide = el => { if (el && el.classList) el.classList.add('hidden'); };
 
-
 const setError   = (el, msg)=>{ if (!el) return; el.textContent = msg; show(el); };
 const clearError = el => { if (!el) return; el.textContent=''; hide(el); };
-
 
 function ensureToastRoot(){
   let r = qs('#toast-root');
@@ -111,6 +188,7 @@ function ensureToastRoot(){
   }
   return r;
 }
+
 function toast(message, type='success', timeout=2400){
   const root = ensureToastRoot();
   const el = document.createElement('div');
@@ -156,6 +234,7 @@ function setTheme(mode){
   }
   try{ localStorage.setItem(THEME_KEY, mode); }catch{}
 }
+
 function applySavedTheme(){
   let saved = null;
   try{ saved = localStorage.getItem(THEME_KEY); }catch{}
@@ -172,6 +251,7 @@ function wireEyes(){
     };
   });
 }
+
 const PW_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[^\w\s]).{8,}$/;
 function isStrongPassword(pw){ return PW_REGEX.test(String(pw||'')); }
 
@@ -180,6 +260,10 @@ async function applySiteConfig(){
     const r = await fetch('/api/config');
     if(!r.ok) throw 0;
     const cfg = await r.json();
+    
+    APP_CONFIG.siteTitle = cfg.siteTitle;
+    APP_CONFIG.allowedEmailDomains = cfg.allowedDomains;
+    
     if(cfg.siteTitle){
       document.title = cfg.siteTitle;
       const st = qs('#site-title'); if (st) st.textContent = cfg.siteTitle;
@@ -196,15 +280,16 @@ async function applySiteConfig(){
       const d=qs('#allowed-domain');
       if (d){ 
         d.textContent = cfg.allowedDomains.length === 1 
-          ? 'Area allowed for registration: ' + cfg.allowedDomains[0]
-          : 'Area allowed for registration: ' + cfg.allowedDomains.join(', ');
+          ? t('allowedDomainSingular', { domain: cfg.allowedDomains[0] })
+          : t('allowedDomainsPlural', { domains: cfg.allowedDomains.join(', ') });
         show(d); 
       }
     }
   }catch{
-    const st = qs('#site-title'); if (st) st.textContent = 'Uygulama';
+    const st = qs('#site-title'); if (st) st.textContent = t('application');
   }
 }
+
 function setMediaButtonsAsIcons(){
   const bp = qs('#btn-add-photo');
   const bv = qs('#btn-add-video');
@@ -221,8 +306,8 @@ function setMediaButtonsAsIcons(){
 
   if (bp) {
     bp.innerHTML = `<img id="ico-photo" src="/camera.svg" alt="" width="22" height="22" loading="lazy" />`;
-    bp.setAttribute('aria-label','Add Photo');
-    bp.title = 'Add Photo';
+    bp.setAttribute('aria-label', t('addPhoto'));
+    bp.title = t('addPhoto');
     makeIconOnly(bp);
     const ip = bp.querySelector('#ico-photo');
     if (ip) ip.onerror = () => { ip.outerHTML = buttonPhotoSVG(); };
@@ -230,8 +315,8 @@ function setMediaButtonsAsIcons(){
 
   if (bv) {
     bv.innerHTML = `<img id="ico-video" src="/video.svg" alt="" width="22" height="22" loading="lazy" />`;
-    bv.setAttribute('aria-label','Add Vİdeo');
-    bv.title = 'Add Video';
+    bv.setAttribute('aria-label', t('addVideo'));
+    bv.title = t('addVideo');
     makeIconOnly(bv);
     const iv = bv.querySelector('#ico-video');
     if (iv) iv.onerror = () => { iv.outerHTML = buttonVideoSVG(); };
@@ -250,8 +335,8 @@ function placeMicIntoMediaBar(){
     const locBtn = document.createElement('button');
     locBtn.className = 'btn ghost icon-btn media-loc-btn';
     locBtn.id = 'media-loc-btn';
-    locBtn.innerHTML = `<img src="/uselocation.svg" alt="Konum" width="20" height="20" />`;
-    locBtn.title = 'Konumumu Kullan';
+    locBtn.innerHTML = `<img src="/useposition.svg" alt="${t('location')}" width="20" height="20" />`;
+    locBtn.title = t('useMyLocation');
     locBtn.style.display = 'inline-flex';
     locBtn.style.alignItems = 'center';
     locBtn.style.justifyContent = 'center';
@@ -268,8 +353,6 @@ function placeMicIntoMediaBar(){
   }
 }
 
-
-
 /* ----------------- Map ----------------- */
 const WORLD_BOUNDS = L.latLngBounds([-85, -180], [85, 180]);
 
@@ -283,8 +366,6 @@ function makeMarkersLayer() {
   return L.layerGroup();
 }
 
-
-
 let map = null;
 let markersLayer = null;
 let clickMarker = null;
@@ -293,27 +374,25 @@ let eventsMap = null;
 let eventsMarkersLayer = null;
 let __eventsExportCtrlAdded = false;
 
-
 /* === GeoJSON Download Control === */
 let __exportCtrlAdded = false;
-function ensureExportControl() {
 
+function ensureExportControl() {
   removeDownloadIfAny();
   __exportCtrlAdded = false;
 }
+
 function ensureMapLegend(mapInstance) {
   if (!mapInstance) return;
   
   if (!shouldShowLegend()) {
     const existing = mapInstance.getContainer().querySelector('.map-legend');
     if (existing) existing.remove();
-    console.log('[LEGEND] shouldShowLegend() false döndü, lejant kaldırıldı');
     return;
   }
   
   const existingLegend = mapInstance.getContainer().querySelector('.map-legend');
   if (existingLegend) {
-    console.log('[LEGEND] Lejant zaten mevcut');
     return;
   }
   
@@ -332,18 +411,18 @@ function ensureMapLegend(mapInstance) {
       `;
       
       div.innerHTML = `
-        <div class="legend-title">Event Icons</div>
+        <div class="legend-title">${t('eventIcons')}</div>
         <div class="legend-item">
           <svg width="20" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path fill="#10b981" d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>
           </svg>
-          <span>My Event</span>
+          <span>${t('myEvent')}</span>
         </div>
         <div class="legend-item">
           <svg width="20" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path fill="#3b82f6" d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z"/>
           </svg>
-          <span>Other Events</span>
+          <span>${t('otherEvents')}</span>
         </div>
         <div class="legend-item">
           <svg width="20" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -353,7 +432,7 @@ function ensureMapLegend(mapInstance) {
               <circle cx="12" cy="11" r="3.2" fill="rgba(255,255,255,.9)"/>
             </g>
           </svg>
-          <span>With photo</span>
+          <span>${t('withPhoto')}</span>
         </div>
         <div class="legend-item">
           <svg width="20" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -363,7 +442,7 @@ function ensureMapLegend(mapInstance) {
               <rect x="6.8" y="9.2" width="4.4" height="3.6" rx="1" fill="rgba(255,255,255,.9)"/>
             </g>
           </svg>
-          <span>With video</span>
+          <span>${t('withVideo')}</span>
         </div>
         <div class="legend-item">
           <svg width="20" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -372,7 +451,7 @@ function ensureMapLegend(mapInstance) {
               <path d="M10 9l6 3-6 3z" fill="rgba(255,255,255,.95)"/>
             </g>
           </svg>
-          <span>Photo + Video</span>
+          <span>${t('withPhotoAndVideo')}</span>
         </div>
       `;
       
@@ -382,6 +461,7 @@ function ensureMapLegend(mapInstance) {
   
   mapInstance.addControl(new Legend());
 }
+
 function removeDownloadIfAny(){
   try{
     let removed = false;
@@ -401,13 +481,11 @@ function downloadFilteredEventsAsGeoJSON() {
   const filtered = tableStates?.events?.filtered || [];
   
   if (filtered.length === 0) {
-    toast('İndirilecek olay yok', 'error');
+    toast(t('noEventsToDownload'), 'error');
     return;
   }
   
   const eventIds = filtered.map(e => parseInt(e.olay_id, 10)).filter(id => !isNaN(id));
-  
-  console.log('[GeoJSON Export] Gönderilen ID sayısı:', eventIds.length);
   
   fetch('/api/export/geojson', {
     method: 'POST',
@@ -416,8 +494,8 @@ function downloadFilteredEventsAsGeoJSON() {
   })
   .then(async r => {
     if (!r.ok) {
-      const errText = await r.text().catch(() => 'Bilinmeyen hata');
-      throw new Error('İndirme hatası: ' + errText);
+      const errText = await r.text().catch(() => t('unknownError'));
+      throw new Error(t('downloadError') + ': ' + errText);
     }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
@@ -430,15 +508,13 @@ function downloadFilteredEventsAsGeoJSON() {
       URL.revokeObjectURL(url);
       a.remove();
     }, 800);
-    toast('Olaylar indirildi', 'success');
+    toast(t('eventsDownloaded'), 'success');
   })
   .catch(err => {
     console.error('[GeoJSON Export Error]', err);
-    toast('GeoJSON indirilemedi: ' + err.message, 'error');
+    toast(t('geojsonDownloadFailed') + ': ' + err.message, 'error');
   });
 }
-
-
 
 function boolFromConfigValue(v) {
   if (typeof v === 'boolean') return v;
@@ -447,56 +523,11 @@ function boolFromConfigValue(v) {
   return false;
 }
 
-function createOrUpdateMapFromConfig() {
-  const minZoom = Number(APP_CONFIG.mapMinZoom);
-  const lat = Number(APP_CONFIG.mapInitialLat);
-  const lng = Number(APP_CONFIG.mapInitialLng);
-  const zoom = Number(APP_CONFIG.mapInitialZoom);
-
-  if (!map) {
-    map = L.map('map', {
-      zoomControl: false,
-      minZoom: minZoom,
-      maxZoom: 18,
-      maxBounds: WORLD_BOUNDS,
-      maxBoundsViscosity: 1.0,
-      worldCopyJump: false
-    }).setView([lat, lng], zoom);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:'© OpenStreetMap contributors',
-      noWrap: true,
-      bounds: WORLD_BOUNDS
-    }).addTo(map);
-
-    if (!markersLayer) {
-      markersLayer = makeMarkersLayer().addTo(map);
-   }
-
-
-    fitMapHeight();
-    window.addEventListener('resize', () => {
-      fitMapHeight();
-      map.invalidateSize();
-    });
-  } else {
-    map.setMinZoom(minZoom);
-    map.setView([lat, lng], zoom, { animate: false });
-    map.invalidateSize();
-  }
-  ensureMapLegend(map);
-}
-
-
-
 function shouldShowLegend() {
-  // 1) LOGIN SCREEN (no currentUser yet)
   if (!currentUser) {
     const showGood = boolFromConfigValue(APP_CONFIG.showGoodEventsOnLogin);
     const showBad  = boolFromConfigValue(APP_CONFIG.showBadEventsOnLogin);
 
-
-    // Both false -> do not show legend
     if (!showGood && !showBad) {
       return false;
     }
@@ -504,24 +535,21 @@ function shouldShowLegend() {
     return true;
   }
 
-  // 2) USER LOGIN -> always show
   if (currentUser.role === 'user') {
     return true;
   }
 
-  // 3) SUPERVISOR LOGIN -> always show (form/admin doesn't matter)
   if (currentUser.role === 'supervisor') {
     return true;
   }
 
-  // 4) ADMIN LOGIN -> always show
   if (currentUser.role === 'admin') {
-    console.log('[LEGEND] Admin girişi: lejant GÖSTER');
     return true;
   }
 
   return false;
 }
+
 function ensureEventsMap() {
   const host = document.getElementById('events-map');
   if (!host) return;
@@ -570,7 +598,7 @@ function ensureEventsExportControl() {
       const wrap = L.DomUtil.create('div','leaflet-bar');
       const btn = L.DomUtil.create('a','',wrap);
       btn.href='#'; 
-      btn.title='Haritada görünen olayları GeoJSON indir';
+      btn.title = t('downloadVisibleEventsGeoJSON');
       btn.style.width='34px'; 
       btn.style.height='34px';
       btn.style.display='inline-flex'; 
@@ -583,15 +611,14 @@ function ensureEventsExportControl() {
           const filtered = tableStates?.events?.filtered || [];
           const eventIds = filtered.map(ev => parseInt(ev.olay_id, 10)).filter(id => !isNaN(id));
           
-          
           const r = await fetch('/api/export/geojson', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
             body: JSON.stringify({ eventIds: eventIds })
           });
           if(!r.ok) {
-            const errText = await r.text().catch(() => 'Bilinmeyen hata');
-            throw new Error('İndirme hatası: ' + errText);
+            const errText = await r.text().catch(() => t('unknownError'));
+            throw new Error(t('downloadError') + ': ' + errText);
           }
           const blob = await r.blob();
           const url = URL.createObjectURL(blob);
@@ -601,10 +628,10 @@ function ensureEventsExportControl() {
           document.body.appendChild(a); 
           a.click();
           setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 800);
-          toast('GeoJSON indirildi', 'success');
+          toast(t('geojsonDownloaded'), 'success');
         }catch(err){ 
           console.error('[ensureEventsExportControl] Export error:', err);
-          toast('GeoJSON indirilemedi: '+err.message,'error'); 
+          toast(t('geojsonDownloadFailed') + ':' + err.message, 'error'); 
         }
       });
       return wrap;
@@ -631,8 +658,6 @@ function fitMapHeight() {
   }
 }
 
-
-
 /* Live location variables */
 let liveWatchId = null;
 let liveMarker = null;
@@ -645,6 +670,7 @@ let vmChunks = [];
 let vmRecording = false;
 
 function makeIcon(svg, ax=[14,40]){ return L.divIcon({ className:'', html: svg, iconSize:[28,40], iconAnchor:ax, popupAnchor:[0,-36] }); }
+
 function pinIcon(color='#3b82f6'){
   const html = `
     <svg class="map-pin" width="28" height="40" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -664,6 +690,7 @@ function photoCameraIcon(color='#3b82f6'){
     </svg>`;
   return makeIcon(html, [14,38]);
 }
+
 function videoCameraIcon(color='#3b82f6'){
   const html = `
     <svg width="28" height="40" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -675,6 +702,7 @@ function videoCameraIcon(color='#3b82f6'){
     </svg>`;
   return makeIcon(html, [14,38]);
 }
+
 function buttonPhotoSVG(color='#3b82f6'){
   return `
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -683,6 +711,7 @@ function buttonPhotoSVG(color='#3b82f6'){
       <circle cx="12" cy="13" r="3.2" fill="rgba(255,255,255,.9)"/>
     </svg>`;
 }
+
 function buttonVideoSVG(color='#3b82f6'){
   return `
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -701,6 +730,7 @@ function playButtonIcon(color='#3b82f6'){
     </svg>`;
   return makeIcon(html, [14,38]);
 }
+
 const BLACK_PIN = ()=>pinIcon('#111');
 
 const COLOR_MINE = '#10b981';
@@ -721,12 +751,12 @@ function iconForEvent(evt){
   return pinIcon(color);
 }
 
-
 function markerFor(e){
   return L.marker([parseFloat(e.enlem), parseFloat(e.boylam)], { icon: iconForEvent(e) });
 }
 
 let __lightbox = null;
+
 function ensureLightbox(){
   if (__lightbox) return __lightbox;
   const wrap = document.createElement('div');
@@ -736,9 +766,9 @@ function ensureLightbox(){
     display:none; align-items:center; justify-content:center; z-index:10000;`;
   wrap.innerHTML = `
     <div id="lb-content" style="max-width:96vw;max-height:96vh;"></div>
-    <button id="lb-close" aria-label="Kapat" style="
+    <button id="lb-close" aria-label="${t('close')}" style="
       position:absolute; top:10px; right:12px; background:#fff; border:0;
-      border-radius:8px; padding:.4rem .6rem; cursor:pointer; z-index:1;">Kapat</button>
+      border-radius:8px; padding:.4rem .6rem; cursor:pointer; z-index:1;">${t('close')}</button>
   `;
   document.body.appendChild(wrap);
   const close = ()=>{ 
@@ -753,6 +783,7 @@ function ensureLightbox(){
   __lightbox = wrap;
   return wrap;
 }
+
 function openLightboxImage(src){
   const lb = ensureLightbox();
   const c = lb.querySelector('#lb-content');
@@ -760,6 +791,7 @@ function openLightboxImage(src){
   lb.style.zIndex = '10000'; 
   lb.style.display='flex';
 }
+
 function openLightboxVideo(src){
   const lb = ensureLightbox();
   const c = lb.querySelector('#lb-content');
@@ -783,6 +815,7 @@ function openLightboxVideoInForm(src){
   lb.style.zIndex = '11500'; 
   lb.style.display='flex';
 }
+
 function escapeHtml(s){
   return String(s||'').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 }
@@ -794,6 +827,7 @@ function formatDate(dateStr){
     return d.toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   } catch { return dateStr; }
 }
+
 /* ==================== CONVERT DATE STRING TO DATE OBJECT ==================== */
 function parseDateStr(dateStr) {
   try {
@@ -808,20 +842,42 @@ function parseDateStr(dateStr) {
 
 /* ==================== DATE FILTER DROPDOWN ==================== */
 function buildDateFilterDropdown(data, state) {
+  let selectAllChecked = false;
+  
+  if (!state.filters.date || !Array.isArray(state.filters.date)) {
+    selectAllChecked = true;
+  } else if (state.filters.date.length === 0) {
+    selectAllChecked = false;
+  } else {
+    const valueCounts = {};
+    data.forEach(item => {
+      const value = formatDate(item.created_at || item.eklenme_tarihi);
+      if (value && value !== '-') {
+        valueCounts[value] = (valueCounts[value] || 0) + 1;
+      }
+    });
+    const totalValues = Object.keys(valueCounts).length;
+    selectAllChecked = state.filters.date.length === totalValues;
+  }
+  
+  const specialFilters = state.specialFilters || {};
+  const newestChecked = specialFilters.sortOrder === 'newest';
+  const oldestChecked = specialFilters.sortOrder === 'oldest';
+  
   let html = `
-    <input type="text" class="filter-search" placeholder="Ara: Mayıs, 2025, 14 Mayıs 2025, 01:00..." />
+    <input type="text" class="filter-search" placeholder="${t('searchPlaceholder')}" />
     <div class="filter-options-container">
       <label class="filter-option">
-        <input type="checkbox" class="filter-select-all" ${!state.filters.date || state.filters.date.length === 0 ? 'checked' : ''} />
-        <span>(Tümünü Seç)</span>
+        <input type="checkbox" class="filter-select-all" ${selectAllChecked ? 'checked' : ''} />
+        <span>(${t('selectAll')})</span>
       </label>
       <label class="filter-option" style="background:#e3f2fd; border-radius:4px; padding:4px 8px;">
-        <input type="radio" name="date-sort-order" class="filter-sort-newest" />
-        <span>📅 En Son Eklenen Başta</span>
+        <input type="radio" name="date-sort-order" class="filter-sort-newest" ${newestChecked ? 'checked' : ''} />
+        <span>📅 ${t('newestFirst')}</span>
       </label>
       <label class="filter-option" style="background:#fff3e0; border-radius:4px; padding:4px 8px;">
-        <input type="radio" name="date-sort-order" class="filter-sort-oldest" />
-        <span>📅 İlk Eklenen Başta</span>
+        <input type="radio" name="date-sort-order" class="filter-sort-oldest" ${oldestChecked ? 'checked' : ''} />
+        <span>📅 ${t('oldestFirst')}</span>
       </label>
       <hr style="margin:8px 0; border:none; border-top:1px solid var(--border);" />
       <div id="custom-date-filters"></div>
@@ -843,7 +899,16 @@ function buildDateFilterDropdown(data, state) {
   
   sortedValues.forEach(value => {
     const count = valueCounts[value];
-    const checked = !state.filters.date || state.filters.date.length === 0 || state.filters.date.includes(value);
+    
+    let checked = false;
+    if (!state.filters.date || !Array.isArray(state.filters.date)) {
+      checked = true;
+    } else if (state.filters.date.length === 0) {
+      checked = false;
+    } else {
+      checked = state.filters.date.includes(value);
+    }
+    
     html += `
       <label class="filter-option">
         <input type="checkbox" class="filter-checkbox" value="${escapeHtml(value)}" ${checked ? 'checked' : ''} />
@@ -855,8 +920,7 @@ function buildDateFilterDropdown(data, state) {
   html += `</div>`;
   return html;
 }
-
-/* ==================== E-MAIL FILTER DROPDOWN ==================== */
+/* ==================== EMAIL FILTER DROPDOWN ==================== */
 function buildEmailFilterDropdown(data, state) {
   const uniqueEmails = new Set();
   state.data.forEach(item => {
@@ -866,7 +930,6 @@ function buildEmailFilterDropdown(data, state) {
   
   const sortedEmails = Array.from(uniqueEmails).sort();
   
-  // Calculate email counts from filtered data
   const emailCounts = {};
   sortedEmails.forEach(email => {
     emailCounts[email] = 0;
@@ -879,7 +942,6 @@ function buildEmailFilterDropdown(data, state) {
     }
   });
   
-  // Collect ONLY domains with users
   const activeDomains = new Set();
   
   state.data.forEach(item => {
@@ -890,7 +952,6 @@ function buildEmailFilterDropdown(data, state) {
     }
   });
   
-  // Calculate the number of domains
   const domainCounts = {};
   activeDomains.forEach(domain => {
     domainCounts[domain] = 0;
@@ -909,24 +970,22 @@ function buildEmailFilterDropdown(data, state) {
   
   const sortedDomains = Array.from(activeDomains).sort();
   
-  // Set the Select All status
   const specialFilters = state.specialFilters || {};
   const allEmailsSelected = !state.filters.email || state.filters.email.length === sortedEmails.length;
   const allDomainsSelected = !specialFilters.emailDomains || specialFilters.emailDomains.length === sortedDomains.length;
   const selectAllChecked = allEmailsSelected && allDomainsSelected;
   
   let html = `
-    <input type="text" class="filter-search" placeholder="Ara: ortak kelime..." />
+    <input type="text" class="filter-search" placeholder="${t('searchCommonWord')}" />
     <div class="filter-options-container">
       <label class="filter-option">
         <input type="checkbox" class="filter-select-all" ${selectAllChecked ? 'checked' : ''} />
-        <span>(Tümünü Seç)</span>
+        <span>(${t('selectAll')})</span>
       </label>
   `;
   
-  // Show ONLY domains with users
   if (sortedDomains.length > 0) {
-    html += '<div style="font-weight:600; font-size:0.85rem; color:var(--primary); margin:8px 0 4px 0;">📧 E-posta Domain\'leri:</div>';
+    html += `<div style="font-weight:600; font-size:0.85rem; color:var(--primary); margin:8px 0 4px 0;">📧 ${t('emailDomains')}:</div>`;
     
     sortedDomains.forEach(domain => {
       const count = domainCounts[domain] || 0;
@@ -942,23 +1001,18 @@ function buildEmailFilterDropdown(data, state) {
     html += '<hr style="margin:8px 0; border:none; border-top:1px solid var(--border);" />';
   }
   
-  // SHOW EVERY EMAIL (even if not in filtered data)
   sortedEmails.forEach(email => {
     const count = emailCounts[email] || 0;
     
-    // Determine checkbox status
     let checked = false;
     if (state.filters.email && state.filters.email.length > 0) {
-      // If there is a normal filter, mark only the selected ones
       checked = state.filters.email.includes(email);
     } else if (specialFilters.emailDomains && specialFilters.emailDomains.length > 0) {
-      // If there is a domain filter, flag emails from that domain
       const match = email.match(/@(.+)$/);
       if (match) {
         checked = specialFilters.emailDomains.includes(match[1]);
       }
     } else {
-      // If there are no filters, tick all
       checked = true;
     }
     
@@ -973,6 +1027,7 @@ function buildEmailFilterDropdown(data, state) {
   html += `</div>`;
   return html;
 }
+
 /* ==================== UPDATE CUSTOM DATE FILTERS ==================== */
 function updateCustomDateFilters(dropdown, query, data) {
   const container = dropdown.querySelector('#custom-date-filters');
@@ -985,20 +1040,21 @@ function updateCustomDateFilters(dropdown, query, data) {
   const q = query.toLowerCase().trim();
   const customFilters = [];
   
-  const aylar = ['ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran', 
-                 'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'];
   
   const yearMatch = q.match(/\b(\d{4})\b/g);
   if (yearMatch) {
     yearMatch.forEach(year => {
-      customFilters.push({ type: 'year', value: parseInt(year), label: `📅 ${year} Yılı` });
+      customFilters.push({ type: 'year', value: parseInt(year), label: `📅 ${t('yearFilter', {year})}` });
     });
   }
   
-  aylar.forEach((ay, idx) => {
-    if (q.includes(ay)) {
-      customFilters.push({ type: 'month', value: idx + 1, label: `📅 ${ay.charAt(0).toUpperCase() + ay.slice(1)} Ayı` });
-    }
+  const monthsStr = t('months');
+  const months = Array.isArray(monthsStr) ? monthsStr : (typeof monthsStr === 'string' ? monthsStr.split(',').map(m => m.trim()) : []);
+
+  months.forEach((month, idx) => {
+    if (month && q.includes(month.toLowerCase())) {
+      customFilters.push({ type: 'month', value: idx + 1, label: `📅 ${t('monthFilter', {month: month.charAt(0).toUpperCase() + month.slice(1)})}` });
+    } 
   });
   
   const dayMatch = q.match(/\b(\d{1,2})\b/g);
@@ -1006,7 +1062,7 @@ function updateCustomDateFilters(dropdown, query, data) {
     dayMatch.forEach(day => {
       const d = parseInt(day, 10);
       if (d >= 1 && d <= 31 && !yearMatch?.includes(day)) {
-        customFilters.push({ type: 'day', value: d, label: `📅 ${d}. Gün` });
+        customFilters.push({ type: 'day', value: d, label: `📅 ${t('dayFilter', {day: d})}` });
       }
     });
   }
@@ -1025,10 +1081,10 @@ function updateCustomDateFilters(dropdown, query, data) {
     const end = rangeMatch[2];
     
     if (start.length === 4 && end.length === 4) {
-      customFilters.push({ type: 'yearRange', start: parseInt(start), end: parseInt(end), label: `📅 ${start} - ${end} Yılları Arası` });
+      customFilters.push({ type: 'yearRange', start: parseInt(start), end: parseInt(end), label: `📅 ${t('yearRangeFilter', {start, end})}` });
     }
     else if (parseInt(start) <= 31 && parseInt(end) <= 31) {
-      customFilters.push({ type: 'dayRange', start: parseInt(start), end: parseInt(end), label: `📅 ${start} - ${end}. Günler Arası` });
+      customFilters.push({ type: 'dayRange', start: parseInt(start), end: parseInt(end), label: `📅 ${t('dayRangeFilter', {start, end})}` });
     }
   }
   
@@ -1037,11 +1093,11 @@ function updateCustomDateFilters(dropdown, query, data) {
   while ((timeRangeMatch = timeRangeRegex.exec(q)) !== null) {
     const startTime = timeRangeMatch[1];
     const endTime = timeRangeMatch[2];
-    customFilters.push({ type: 'timeRange', start: startTime, end: endTime, label: `🕐 ${startTime} - ${endTime} Arası` });
+    customFilters.push({ type: 'timeRange', start: startTime, end: endTime, label: `🕐 ${t('timeRangeFilter', {start: startTime, end: endTime})}` });
   }
   
   if (customFilters.length > 0) {
-    container.innerHTML = '<div style="font-weight:600; font-size:0.85rem; color:var(--primary); margin:8px 0 4px 0;">🔍 Özel Filtreler:</div>';
+    container.innerHTML = `<div style="font-weight:600; font-size:0.85rem; color:var(--primary); margin:8px 0 4px 0;">🔍 ${t('customFilters')}:</div>`;
     
     customFilters.forEach((filter, idx) => {
       const id = `custom-filter-${idx}`;
@@ -1063,7 +1119,7 @@ function updateCustomDateFilters(dropdown, query, data) {
   }
 }
 
-/* ==================== APPLY CUSTOM DATE FILTERS==================== */
+/* ==================== APPLY CUSTOM DATE FILTERS ==================== */
 function applyCustomDateFilters(tableKey) {
   const state = tableStates[tableKey];
   const dropdown = document.querySelector(`#${tableKey}-table .filter-dropdown[data-column="date"]`);
@@ -1124,7 +1180,6 @@ function applyCustomDateFilters(tableKey) {
 function applySortFilter(sortType) {
   const state = tableStates.events;
   
-  //Hide status
   if (!state.specialFilters) state.specialFilters = {};
   state.specialFilters.sortOrder = sortType;
   
@@ -1147,7 +1202,8 @@ function applySortFilter(sortType) {
   renderTable('events');
   updateFilterIcon('events', 'date');
 }
-/* ==================== APPLY EMAIL DOMAIN FILTERS==================== */
+
+/* ==================== APPLY EMAIL DOMAIN FILTERS ==================== */
 function applyEmailDomainFilters(tableKey) {
   const state = tableStates[tableKey];
   const dropdown = document.querySelector(`#${tableKey}-table .filter-dropdown[data-column="email"]`);
@@ -1191,7 +1247,8 @@ function applyEmailDomainFilters(tableKey) {
   renderTable(tableKey);
   updateFilterIcon(tableKey, 'email');
 }
-/* ==================== TABLE FILTERING AND PAGING ==================== */
+
+/* ==================== TABLE FILTERING AND PAGINATION ==================== */
 
 const tableStates = {
   types: { 
@@ -1224,7 +1281,56 @@ const tableStates = {
     specialFilters: {}
   }
 };
+function resetAllTableFiltersOnLanguageChange() {
+  Object.keys(tableStates).forEach(key => {
+    const state = tableStates[key];
+    if (!state) return;
+    state.filters = {};
+    if (state.specialFilters) {
+      state.specialFilters = {};
+    }
+    state.filtered = Array.isArray(state.data) ? [...state.data] : [];
+    state.currentPage = 1;
+  });
+  qsa('.filter-dropdown.show').forEach(d => d.classList.remove('show'));
+  ['types', 'users', 'events'].forEach(key => {
+    if (tableStates[key]) {
+      renderTable(key);
+    }
+  });
+  ['types', 'users', 'events'].forEach(key => {
+    try {
+      attachFilterEvents(key);
+    } catch (e) {
+      console.warn('attachFilterEvents failed for', key, e);
+    }
+  });
+}
 
+function patchSetLanguageForFilters() {
+  const current = window.setLanguage;
+
+  if (typeof current === 'function' && current.__filtersWrapped) {
+    return;
+  }
+  const original = (typeof current === 'function')
+    ? current
+    : function(lang) {
+        try { localStorage.setItem('language', lang); } catch {}
+      };
+
+  function wrappedSetLanguage(lang) {
+    original(lang);
+    setTimeout(() => {
+      resetAllTableFiltersOnLanguageChange();
+    }, 80);
+  }
+  wrappedSetLanguage.__filtersWrapped = true;
+  window.setLanguage = wrappedSetLanguage;
+}
+
+patchSetLanguageForFilters();
+document.addEventListener('DOMContentLoaded', patchSetLanguageForFilters);
 function applyFilters(tableKey) {
   const state = tableStates[tableKey];
   if (!state) return;
@@ -1249,20 +1355,20 @@ function applyFilters(tableKey) {
       switch(tableKey) {
         case 'types':
           if (column === 'name') itemValue = item.o_adi || '';
-          if (column === 'good') itemValue = (item.good === true || item.good === 'true' || item.good === 1) ? 'Faydalı' : 'Faydasız';
+          if (column === 'good') itemValue = (item.good === true || item.good === 'true' || item.good === 1) ? t('beneficial') : t('notBeneficial');
           if (column === 'creator') itemValue = item.created_by_name || '-';
           break;
         case 'users':
           if (column === 'username') itemValue = item.username || '';
           if (column === 'role') itemValue = item.role || '';
           if (column === 'email') itemValue = item.email || '';
-          if (column === 'verified') itemValue = item.email_verified ? 'Evet' : 'Hayır';
+          if (column === 'verified') itemValue = item.email_verified ? t('yes') : t('no');
           break;
         case 'events':
           if (column === 'type') itemValue = item.olay_turu_adi || '-';
           if (column === 'creator') itemValue = item.created_by_username || '-';
-          if (column === 'photo') itemValue = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? 'Var' : 'Yok';
-          if (column === 'video') itemValue = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? 'Var' : 'Yok';
+          if (column === 'photo') itemValue = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? t('available') : t('notAvailable');
+          if (column === 'video') itemValue = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
           if (column === 'date') itemValue = formatDate(item.created_at || item.eklenme_tarihi);
           break;
       }
@@ -1271,18 +1377,20 @@ function applyFilters(tableKey) {
     }
     return true;
   });
+  
   state.currentPage = 1; 
   renderTable(tableKey);
 }
-/* ==================== DATE SEARCH ASSISTANT ==================== */
+
+/* ==================== DATE SEARCH HELPER ==================== */
 function matchDateQuery(dateStr, query) {
   if (!dateStr || !query) return false;
   
   if (dateStr.toLowerCase().includes(query)) return true;
   
   try {
-    const aylar = ['ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran', 
-                   'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'];
+    const monthsStr = t('months');
+    const months = Array.isArray(monthsStr) ? monthsStr : (typeof monthsStr === 'string' ? monthsStr.split(',').map(m => m.trim()) : []);
     
     const parts = dateStr.split(' ')[0].split('.');
     if (parts.length !== 3) return false;
@@ -1291,42 +1399,52 @@ function matchDateQuery(dateStr, query) {
     const month = parts[1];
     const year = parts[2];
     const monthIndex = parseInt(month, 10) - 1;
-    const monthName = aylar[monthIndex] || '';
+    const monthName = (months[monthIndex] || '').toLowerCase();
     
-    const q = query.toLowerCase();
+    const q = query.toLowerCase().trim();
     
     if (/^\d{4}$/.test(q) && year === q) return true;
     
     if (monthName && monthName.includes(q)) return true;
-
-    if (q.includes(' ')) {
-      const [p1, p2] = q.split(' ');
-      if (p2 === year && (monthName.includes(p1) || month === p1)) return true;
-    }
     
+    if (/^\d{1,2}$/.test(q) && month === q.padStart(2, '0')) return true;
+
+    if (/^\d{1,2}$/.test(q) && parseInt(q) <= 31 && day === q.padStart(2, '0')) return true;
 
     if (q.includes(' ')) {
-      const [p1, p2] = q.split(' ');
-      if (day === p1.padStart(2, '0') && (monthName.includes(p2) || month === p2.padStart(2, '0'))) return true;
-    }
-
-    if (q.includes(' ')) {
-      const qParts = q.split(' ');
-      if (qParts.length === 3) {
-        const [qDay, qMonth, qYear] = qParts;
-        if (day === qDay.padStart(2, '0') && 
-            year === qYear && 
-            (monthName.includes(qMonth) || month === qMonth.padStart(2, '0'))) {
-          return true;
+      const parts = q.split(' ').filter(p => p);
+      if (parts.length === 2) {
+        const [p1, p2] = parts;
+        if (/^\d{4}$/.test(p2) && p2 === year) {
+          if (monthName.includes(p1) || month === p1.padStart(2, '0')) {
+            return true;
+          }
+        }
+        if (/^\d{1,2}$/.test(p1) && day === p1.padStart(2, '0')) {
+          if (monthName.includes(p2) || month === p2.padStart(2, '0')) {
+            return true;
+          }
+        }
+      }
+      if (parts.length === 3) {
+        const [qDay, qMonth, qYear] = parts;
+        if (/^\d{1,2}$/.test(qDay) && /^\d{4}$/.test(qYear)) {
+          if (day === qDay.padStart(2, '0') && year === qYear) {
+            if (monthName.includes(qMonth) || month === qMonth.padStart(2, '0')) {
+              return true;
+            }
+          }
         }
       }
     }
     
     return false;
-  } catch {
+  } catch (e) {
+    console.warn('matchDateQuery error:', e);
     return false;
   }
 }
+
 function buildFilterDropdown(tableKey, column, data) {
   const state = tableStates[tableKey];
 
@@ -1353,20 +1471,20 @@ function buildFilterDropdown(tableKey, column, data) {
     switch(tableKey) {
       case 'types':
         if (column === 'name') value = item.o_adi || '';
-        if (column === 'good') value = (item.good === true || item.good === 'true' || item.good === 1) ? 'Evet' : 'Hayır';
+        if (column === 'good') value = (item.good === true || item.good === 'true' || item.good === 1) ? t('beneficial') : t('notBeneficial');
         if (column === 'creator') value = item.created_by_name || '-';
         break;
       case 'users':
         if (column === 'username') value = item.username || '';
         if (column === 'role') value = item.role || '';
         if (column === 'email') value = item.email || '';
-        if (column === 'verified') value = item.email_verified ? 'Evet' : 'Hayır';
+        if (column === 'verified') value = item.email_verified ? t('yes') : t('no');
         break;
       case 'events':
         if (column === 'type') value = item.olay_turu_adi || '-';
         if (column === 'creator') value = item.created_by_username || '-';
-        if (column === 'photo') value = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? 'Var' : 'Yok';
-        if (column === 'video') value = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? 'Var' : 'Yok';
+        if (column === 'photo') value = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? t('available') : t('notAvailable');
+        if (column === 'video') value = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
         break;
     }
     
@@ -1393,36 +1511,48 @@ function buildFilterDropdown(tableKey, column, data) {
     switch(tableKey) {
       case 'types':
         if (column === 'name') value = item.o_adi || '';
+        if (column === 'good') value = (item.good === true || item.good === 'true' || item.good === 1) ? t('beneficial') : t('notBeneficial');
         if (column === 'creator') value = item.created_by_name || '-';
         break;
       case 'users':
         if (column === 'username') value = item.username || '';
         if (column === 'role') value = item.role || '';
         if (column === 'email') value = item.email || '';
-        if (column === 'verified') value = item.email_verified ? 'Evet' : 'Hayır';
+        if (column === 'verified') value = item.email_verified ? t('yes') : t('no');
         break;
       case 'events':
         if (column === 'type') value = item.olay_turu_adi || '-';
         if (column === 'creator') value = item.created_by_username || '-';
-        if (column === 'photo') value = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? 'Var' : 'Yok';
-        if (column === 'video') value = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? 'Var' : 'Yok';
+        if (column === 'photo') value = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? t('available') : t('notAvailable');
+        if (column === 'video') value = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
         break;
     }
     
     if (value) valueCounts[value] = (valueCounts[value] || 0) + 1;
   });
   
+  let isAllSelected = false;
+  
+  if (!state.filters[column] || !Array.isArray(state.filters[column])) {
+    isAllSelected = true;
+  } else if (state.filters[column].length === 0) {
+    isAllSelected = false;
+  } else if (state.filters[column].length === sortedValues.length) {
+    isAllSelected = true;
+  } else {
+    isAllSelected = false;
+  }
+  
   let html = `
-    <input type="text" class="filter-search" placeholder="Ara..." />
+    <input type="text" class="filter-search" placeholder="${t('search')}" />
     <div class="filter-options-container">
       <label class="filter-option">
-        <input type="checkbox" class="filter-select-all" ${!state.filters[column] || state.filters[column].length === 0 ? 'checked' : ''} />
-        <span>(Tümünü Seç)</span>
+        <input type="checkbox" class="filter-select-all" ${isAllSelected ? 'checked' : ''} />
+        <span>(${t('selectAll')})</span>
       </label>
   `;
 
-
-sortedValues.forEach(value => {
+  sortedValues.forEach(value => {
     let filteredCount = 0;
     state.filtered.forEach(item => {
       let itemValue = '';
@@ -1430,27 +1560,35 @@ sortedValues.forEach(value => {
       switch(tableKey) {
         case 'types':
           if (column === 'name') itemValue = item.o_adi || '';
-          if (column === 'good') itemValue = (item.good === true || item.good === 'true' || item.good === 1) ? 'Evet' : 'Hayır';
+          if (column === 'good') itemValue = (item.good === true || item.good === 'true' || item.good === 1) ? t('beneficial') : t('notBeneficial');
           if (column === 'creator') itemValue = item.created_by_name || '-';
           break;
         case 'users':
           if (column === 'username') itemValue = item.username || '';
           if (column === 'role') itemValue = item.role || '';
           if (column === 'email') itemValue = item.email || '';
-          if (column === 'verified') itemValue = item.email_verified ? 'Evet' : 'Hayır';
+          if (column === 'verified') itemValue = item.email_verified ? t('yes') : t('no');
           break;
         case 'events':
           if (column === 'type') itemValue = item.olay_turu_adi || '-';
           if (column === 'creator') itemValue = item.created_by_username || '-';
-          if (column === 'photo') itemValue = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? 'Var' : 'Yok';
-          if (column === 'video') itemValue = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? 'Var' : 'Yok';
+          if (column === 'photo') itemValue = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? t('available') : t('notAvailable');
+          if (column === 'video') itemValue = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
           break;
       }
       
       if (itemValue === value) filteredCount++;
     });
     
-    const checked = !state.filters[column] || state.filters[column].length === 0 || state.filters[column].includes(value);
+    let checked = false;
+    if (!state.filters[column] || !Array.isArray(state.filters[column])) {
+      checked = true;
+    } else if (state.filters[column].length === 0) {
+      checked = false;
+    } else {
+      checked = state.filters[column].includes(value);
+    }
+    
     html += `
       <label class="filter-option">
         <input type="checkbox" class="filter-checkbox" value="${escapeHtml(value)}" ${checked ? 'checked' : ''} />
@@ -1500,23 +1638,23 @@ function buildEventTypeFilterDropdown(data, state) {
   const selectAllChecked = allTypesSelected && allGoodBadSelected;
   
   let html = `
-    <input type="text" class="filter-search" placeholder="Ara..." />
+    <input type="text" class="filter-search" placeholder="${t('search')}" />
     <div class="filter-options-container">
       <label class="filter-option">
         <input type="checkbox" class="filter-select-all" ${selectAllChecked ? 'checked' : ''} />
-        <span>(Tümünü Seç)</span>
+        <span>(${t('selectAll')})</span>
       </label>
       
       <hr style="margin:8px 0; border:none; border-top:1px solid var(--border);" />
       
       <label class="filter-option special-filter-item" style="background:#d4edda; border-radius:4px; padding:4px 8px;">
         <input type="checkbox" class="filter-event-type-good" ${specialFilters.typeGood !== false ? 'checked' : ''} />
-        <span style="font-weight:500;">✅ Beneficial to Citizens (${goodCount})</span>
+        <span style="font-weight:500;">✅ ${t('beneficialToCitizen')} (${goodCount})</span>
       </label>
       
       <label class="filter-option special-filter-item" style="background:#f8d7da; border-radius:4px; padding:4px 8px;">
         <input type="checkbox" class="filter-event-type-bad" ${specialFilters.typeBad !== false ? 'checked' : ''} />
-        <span style="font-weight:500;">❌ Useless to Citizens (${badCount})</span>
+        <span style="font-weight:500;">❌ ${t('notBeneficialToCitizen')} (${badCount})</span>
       </label>
       
       <hr style="margin:8px 0; border:none; border-top:1px solid var(--border);" />
@@ -1550,7 +1688,7 @@ function buildEventTypeFilterDropdown(data, state) {
   return html;
 }
 
-/* ==================== EVENT ADDING FILTER DROPDOWN (EMAIL DOMAINS) ==================== */
+/* ==================== EVENT CREATOR FILTER DROPDOWN (EMAIL DOMAINS) ==================== */
 function buildEventCreatorFilterDropdown(data, state) {
   const uniqueCreators = new Set();
   state.data.forEach(item => {
@@ -1616,16 +1754,16 @@ function buildEventCreatorFilterDropdown(data, state) {
   const selectAllChecked = allCreatorsSelected && allDomainsSelected;
   
   let html = `
-    <input type="text" class="filter-search" placeholder="Ara..." />
+    <input type="text" class="filter-search" placeholder="${t('search')}" />
     <div class="filter-options-container">
       <label class="filter-option">
         <input type="checkbox" class="filter-select-all" ${selectAllChecked ? 'checked' : ''} />
-        <span>(Tümünü Seç)</span>
+        <span>(${t('selectAll')})</span>
       </label>
   `;
   
   if (sortedDomains.length > 0) {
-    html += '<div style="font-weight:600; font-size:0.85rem; color:var(--primary); margin:8px 0 4px 0;">📧 E-posta Domain\'leri:</div>';
+    html += `<div style="font-weight:600; font-size:0.85rem; color:var(--primary); margin:8px 0 4px 0;">📧 ${t('emailDomains')}:</div>`;
     
     sortedDomains.forEach(domain => {
       const count = domainCounts[domain] || 0;
@@ -1673,7 +1811,7 @@ function buildEventCreatorFilterDropdown(data, state) {
   return html;
 }
 
-/* ==================== APPLY EVENT TYPE FILTERS (GOOD/BAD) ==================== */
+/* ==================== APPLY EVENT TYPE GOOD/BAD FILTERS ==================== */
 function applyEventTypeGoodBadFilters(tableKey) {
   const state = tableStates[tableKey];
   const dropdown = document.querySelector(`#${tableKey}-table .filter-dropdown[data-column="type"]`);
@@ -1710,12 +1848,23 @@ function applyEventTypeGoodBadFilters(tableKey) {
     return false;
   });
   
+  const selectAllBox = dropdown.querySelector('.filter-select-all');
+  if (selectAllBox && goodChecked && badChecked) {
+    const allCheckboxes = dropdown.querySelectorAll('.filter-checkbox');
+    const checkedCheckboxes = dropdown.querySelectorAll('.filter-checkbox:checked');
+    selectAllBox.checked = checkedCheckboxes.length === allCheckboxes.length;
+    
+    if (checkedCheckboxes.length === allCheckboxes.length) {
+      delete state.filters.type;
+    }
+  }
+  
   state.currentPage = 1;
   renderTable(tableKey);
   updateFilterIcon(tableKey, 'type');
 }
 
-/* ==================== APPLY EVENT ADDING DOMAIN FILTERS ==================== */
+/* ==================== APPLY EVENT CREATOR DOMAIN FILTERS ==================== */
 function applyEventCreatorDomainFilters(tableKey) {
   const state = tableStates[tableKey];
   const dropdown = document.querySelector(`#${tableKey}-table .filter-dropdown[data-column="creator"]`);
@@ -1755,6 +1904,7 @@ function applyEventCreatorDomainFilters(tableKey) {
 }
 
 let globalClickHandlerAttached = false;
+
 function attachGlobalClickHandler() {
   if (globalClickHandlerAttached) return;
   globalClickHandlerAttached = true;
@@ -1772,6 +1922,10 @@ function attachFilterEvents(tableKey) {
   
   attachGlobalClickHandler();
   
+  table.querySelectorAll('.filter-icon').forEach(icon => {
+    const cloned = icon.cloneNode(true);
+    icon.parentNode.replaceChild(cloned, icon);
+  });
   table.querySelectorAll('.filter-icon').forEach(icon => {
     const newIcon = icon.cloneNode(true);
     icon.parentNode.replaceChild(newIcon, icon);
@@ -2085,11 +2239,8 @@ function attachFilterEvents(tableKey) {
               const goodChecked = goodBox?.checked;
               const badChecked = badBox?.checked;
               
-              if (selectAllBox) {
-                const allCheckboxes = dropdown.querySelectorAll('.filter-checkbox');
-                const checkedCheckboxes = dropdown.querySelectorAll('.filter-checkbox:checked');
-                selectAllBox.checked = goodChecked && badChecked && checkedCheckboxes.length === allCheckboxes.length;
-              }
+              const allCheckboxes = dropdown.querySelectorAll('.filter-checkbox');
+              const selectedTypes = state.filters.type || [];
               
               dropdown.querySelectorAll('.filter-checkbox').forEach(cb => {
                 const typeName = cb.value;
@@ -2097,19 +2248,42 @@ function attachFilterEvents(tableKey) {
                 if (typeData) {
                   const isGood = typeData.olay_turu_good === true || typeData.olay_turu_good === 'true' || typeData.olay_turu_good === 1;
                   
-                  if (goodChecked === false && isGood) {
-                    cb.checked = false;
-                  } else if (badChecked === false && !isGood) {
-                    cb.checked = false;
-                  } else if (goodChecked === true && badChecked === true) {
-                    cb.checked = true;
-                  } else if (goodChecked === true && isGood) {
-                    cb.checked = true;
-                  } else if (badChecked === true && !isGood) {
-                    cb.checked = true;
+                  if (selectedTypes.length > 0) {
+                    if (goodChecked && badChecked) {
+                      cb.checked = true;
+                    } else if (goodChecked && isGood) {
+                      cb.checked = true;
+                    } else if (badChecked && !isGood) {
+                      cb.checked = true;
+                    } else if (!goodChecked && isGood) {
+                      cb.checked = false;
+                    } else if (!badChecked && !isGood) {
+                      cb.checked = false;
+                    }
+                  } else {
+                    if (goodChecked === false && isGood) {
+                      cb.checked = false;
+                    } else if (badChecked === false && !isGood) {
+                      cb.checked = false;
+                    } else if (goodChecked === true && badChecked === true) {
+                      cb.checked = true;
+                    } else if (goodChecked === true && isGood) {
+                      cb.checked = true;
+                    } else if (badChecked === true && !isGood) {
+                      cb.checked = true;
+                    }
                   }
                 }
               });
+              
+              if (selectedTypes.length > 0) {
+                state.filters.type = [];
+              }
+              
+              if (selectAllBox) {
+                const checkedCheckboxes = dropdown.querySelectorAll('.filter-checkbox:checked');
+                selectAllBox.checked = goodChecked && badChecked && checkedCheckboxes.length === allCheckboxes.length;
+              }
               
               applyEventTypeGoodBadFilters('events');
             };
@@ -2185,13 +2359,11 @@ function attachFilterEvents(tableKey) {
                 dropdown.querySelectorAll('.filter-creator-domain').forEach(domainCb => {
                   const domain = domainCb.getAttribute('data-domain');
                   
-                  // Find all users belonging to this domain
                   const usersInDomain = [];
                   if (tableStates.users && tableStates.users.data) {
                     tableStates.users.data.forEach(user => {
                       const email = user.email || '';
                       if (email.endsWith('@' + domain)) {
-                        // Count only those in filtered data
                         const hasEvents = state.data.some(item => item.created_by_username === user.username);
                         if (hasEvents) {
                           usersInDomain.push(user.username);
@@ -2200,12 +2372,10 @@ function attachFilterEvents(tableKey) {
                     });
                   }
                   
-                  // If ALL users in this domain are selected, check the domain checkbox
                   const allUsersSelected = usersInDomain.length > 0 && usersInDomain.every(u => selectedUsernames.includes(u));
                   domainCb.checked = allUsersSelected;
                 });
                 
-                // Update status
                 if (!state.specialFilters) state.specialFilters = {};
                 const checkedDomains = Array.from(dropdown.querySelectorAll('.filter-creator-domain:checked'))
                   .map(cb => cb.getAttribute('data-domain'));
@@ -2222,11 +2392,9 @@ function attachFilterEvents(tableKey) {
                   if (match) allDomains.add(match[1]);
                 });
                 
-                // Update domain checkboxes
                 dropdown.querySelectorAll('.filter-email-domain').forEach(domainCb => {
                   const domain = domainCb.getAttribute('data-domain');
                   
-                  // Find all emails from this domain
                   const emailsInDomain = [];
                   state.data.forEach(item => {
                     const email = item.email;
@@ -2243,7 +2411,6 @@ function attachFilterEvents(tableKey) {
                   domainCb.checked = allEmailsSelected;
                 });
                 
-                // Update status
                 if (!state.specialFilters) state.specialFilters = {};
                 const checkedDomains = Array.from(dropdown.querySelectorAll('.filter-email-domain:checked'))
                   .map(cb => cb.getAttribute('data-domain'));
@@ -2259,6 +2426,7 @@ function attachFilterEvents(tableKey) {
     });
   });
 }
+
 function updateFilterIcon(tableKey, column) {
   const table = qs(`#${tableKey}-table`);
   if (!table) return;
@@ -2269,11 +2437,13 @@ function updateFilterIcon(tableKey, column) {
   const state = tableStates[tableKey];
   let hasFilter = false;
   
-  if (state.filters[column] && state.filters[column].length > 0) {
-    hasFilter = true;
+  if (state.filters[column]) {
+    if (Array.isArray(state.filters[column])) {
+      hasFilter = state.filters[column].length > 0;
+    } else {
+      hasFilter = true;
+    }
   }
-  
-  // Custom filter control
   if (!hasFilter && state.specialFilters) {
     if (tableKey === 'events') {
       if (column === 'type') {
@@ -2283,7 +2453,6 @@ function updateFilterIcon(tableKey, column) {
       }
       
       if (column === 'creator' && state.specialFilters.creatorDomains) {
-        // Count ONLY domains with users
         const activeDomains = new Set();
         if (tableStates.users && tableStates.users.data) {
           tableStates.users.data.forEach(user => {
@@ -2331,27 +2500,25 @@ function renderPagination(tableKey) {
   const pageSize = state.pageSize || total;
   const totalPages = pageSize > 0 ? Math.ceil(total / pageSize) : 1;
   const currentPage = Math.min(state.currentPage, totalPages);
-  
 
   const totalData = state.data.length;
   const totalFiltered = state.filtered.length;
   
   if (pageSize >= total) {
     if (totalFiltered < totalData) {
-      infoEl.textContent = `Toplam ${totalData} kayıttan ${totalFiltered} kayıt gösteriliyor`;
+      infoEl.textContent = t('showingFilteredRecords', { filtered: totalFiltered, total: totalData });
     } else {
-      infoEl.textContent = `Toplam ${total} kayıt gösteriliyor`;
+      infoEl.textContent = t('showingTotalRecords', { total });
     }
   } else {
     const start = (currentPage - 1) * pageSize + 1;
     const end = Math.min(currentPage * pageSize, total);
     if (totalFiltered < totalData) {
-      infoEl.textContent = `${start}-${end} arası gösteriliyor (Toplam ${totalData} kayıttan ${totalFiltered} kayıt)`;
+      infoEl.textContent = t('showingRangeFilteredRecords', { start, end, filtered: totalFiltered, total: totalData });
     } else {
-      infoEl.textContent = `${start}-${end} arası gösteriliyor (Toplam: ${total})`;
+      infoEl.textContent = t('showingRangeRecords', { start, end, total });
     }
   }
-  
 
   if (totalPages <= 1) {
     controlsEl.innerHTML = '';
@@ -2359,7 +2526,6 @@ function renderPagination(tableKey) {
   }
   
   let html = '';
-  
 
   html += `<button ${currentPage === 1 ? 'disabled' : ''} data-page="1">‹‹</button>`;
   html += `<button ${currentPage === 1 ? 'disabled' : ''} data-page="${currentPage - 1}">‹</button>`;
@@ -2391,7 +2557,8 @@ function renderPagination(tableKey) {
     });
   });
 }
-/* ==================== SYNCHRONIZE EVENT MAP BY FILTER ==================== */
+
+/* ==================== SYNC EVENT MAP WITH FILTER ==================== */
 function clearMarkersLayerSafe(){
   try { markersLayer?.clearLayers(); } catch {}
 }
@@ -2401,29 +2568,29 @@ function addEventMarkerToLayer(e){
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
   const m = markerFor(e).addTo(markersLayer);
 
-  const turHtml = e.olay_turu_adi ? `<b>Tür:</b> ${escapeHtml(e.olay_turu_adi)}<br>` : '';
+  const turHtml = e.olay_turu_adi ? `<b>${t('type')}:</b> ${escapeHtml(e.olay_turu_adi)}<br>` : '';
   const creatorName = e.created_by_username ?? '';
   const creatorId = (e.created_by_id != null) ? String(e.created_by_id) : '-';
   const who = creatorName ? `${creatorName} (ID: ${creatorId})` : '-';
 
   const mediaHtml = `
-    <div><b>Fotoğraf:</b></div>
+    <div><b>${t('photo')}:</b></div>
     <div class="popup-photos"><div data-ph="${e.olay_id}"></div></div>
     <div style="height:6px"></div>
-    <div><b>Video:</b></div>
+    <div><b>${t('video')}:</b></div>
     <div class="popup-videos"><div data-vd="${e.olay_id}"></div></div>
   `;
 
   const content = document.createElement('div');
   content.innerHTML = `
     <div style="margin-bottom:6px;">
-      <b>Olay ID:</b> ${e.olay_id}
-      <span class="badge ${e.is_mine ? 'mine' : 'other'}" style="margin-left:6px;">${e.is_mine ? 'Benim' : 'Diğer'}</span>
+      <b>${t('eventID')}:</b> ${e.olay_id}
+      <span class="badge ${e.is_mine ? 'mine' : 'other'}" style="margin-left:6px;">${e.is_mine ? t('mine') : t('other')}</span>
     </div>
     ${turHtml}
-    <div class="popup-body"><b>Açıklama:</b> ${e.aciklama ? escapeHtml(e.aciklama) : ''}</div>
+    <div class="popup-body"><b>${t('description')}:</b> ${e.aciklama ? escapeHtml(e.aciklama) : ''}</div>
     ${mediaHtml}
-    ${currentUser ? `<div class="popup-meta"><b>Ekleyen:</b> ${escapeHtml(who)}</div>` : ''}
+    ${currentUser ? `<div class="popup-meta"><b>${t('addedBy')}:</b> ${escapeHtml(who)}</div>` : ''}
     <div class="inline" style="gap:6px; margin-top:8px;"></div>
   `;
 
@@ -2433,7 +2600,7 @@ function addEventMarkerToLayer(e){
   if (canEdit) {
     const eb = document.createElement('button');
     eb.className = 'btn ghost'; 
-    eb.textContent = 'Update';
+    eb.textContent = t('update');
     eb.onclick = () => beginEdit(e);
     btnRow.appendChild(eb);
   }
@@ -2446,9 +2613,9 @@ function addEventMarkerToLayer(e){
   if (canDelete) {
     const db = document.createElement('button');
     db.className = 'btn danger'; 
-    db.textContent = 'Sil';
+    db.textContent = t('delete');
     db.onclick = async () => {
-      if (!confirm('Olay silinsin mi?')) return;
+      if (!confirm(t('confirmDeleteEvent'))) return;
       db.disabled = true;
       try {
         const url = (currentUser.role === 'user') ? `/api/olay/${e.olay_id}` : `/api/admin/olay/${e.olay_id}`;
@@ -2471,7 +2638,6 @@ function syncMapWithFilteredEvents(){
   if (!eventsTabActive) return;
 
   clearMarkersLayerSafe();
-
 
   const list = tableStates?.events?.filtered || [];
   list.forEach(e => addEventMarkerToLayer(e));
@@ -2513,8 +2679,15 @@ function renderTable(tableKey) {
   renderPagination(tableKey);
   
   attachFilterEvents(tableKey);
-  
-  Object.keys(state.filters).forEach(column => updateFilterIcon(tableKey, column));
+  const table = qs(`#${tableKey}-table`);
+  if (table) {
+    table.querySelectorAll('.filter-icon').forEach(icon => {
+      const column = icon.getAttribute('data-column');
+      if (column) {
+        updateFilterIcon(tableKey, column);
+      }
+    });
+  }
   if (tableKey === 'events' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'supervisor')) {
     syncMapWithFilteredEvents();
 
@@ -2537,29 +2710,29 @@ function syncEventsMapWithFilteredEvents(){
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
     const m = L.marker([lat,lng], { icon: iconForEvent(e) }).addTo(eventsMarkersLayer);
     
-    const turHtml = e.olay_turu_adi ? `<b>Tür:</b> ${escapeHtml(e.olay_turu_adi)}<br>` : '';
+    const turHtml = e.olay_turu_adi ? `<b>${t('type')}:</b> ${escapeHtml(e.olay_turu_adi)}<br>` : '';
     const creatorName = e.created_by_username ?? '';
     const creatorId = (e.created_by_id != null) ? String(e.created_by_id) : '-';
     const who = creatorName ? `${creatorName} (ID: ${creatorId})` : '-';
 
     const mediaHtml = `
-      <div><b>Fotoğraf:</b></div>
+      <div><b>${t('photo')}:</b></div>
       <div class="popup-photos"><div data-ph="${e.olay_id}"></div></div>
       <div style="height:6px"></div>
-      <div><b>Video:</b></div>
+      <div><b>${t('video')}:</b></div>
       <div class="popup-videos"><div data-vd="${e.olay_id}"></div></div>
     `;
 
     const content = document.createElement('div');
     content.innerHTML = `
       <div style="margin-bottom:6px;">
-        <b>Olay ID:</b> ${e.olay_id}
-        <span class="badge ${e.is_mine ? 'mine' : 'other'}" style="margin-left:6px;">${e.is_mine ? 'Benim' : 'Diğer'}</span>
+        <b>${t('eventID')}:</b> ${e.olay_id}
+        <span class="badge ${e.is_mine ? 'mine' : 'other'}" style="margin-left:6px;">${e.is_mine ? t('mine') : t('other')}</span>
       </div>
       ${turHtml}
-      <div class="popup-body"><b>Açıklama:</b> ${e.aciklama ? escapeHtml(e.aciklama) : ''}</div>
+      <div class="popup-body"><b>${t('description')}:</b> ${e.aciklama ? escapeHtml(e.aciklama) : ''}</div>
       ${mediaHtml}
-      <div class="popup-meta"><b>Ekleyen:</b> ${escapeHtml(who)}</div>
+      <div class="popup-meta"><b>${t('addedBy')}:</b> ${escapeHtml(who)}</div>
       <div class="inline" style="gap:6px; margin-top:8px;"></div>
     `;
 
@@ -2569,7 +2742,7 @@ function syncEventsMapWithFilteredEvents(){
     if (canEdit) {
       const eb = document.createElement('button');
       eb.className = 'btn ghost'; 
-      eb.textContent = 'Update';
+      eb.textContent = t('update');
       eb.onclick = () => beginEdit(e);
       btnRow.appendChild(eb);
     }
@@ -2582,9 +2755,9 @@ function syncEventsMapWithFilteredEvents(){
     if (canDelete) {
       const db = document.createElement('button');
       db.className = 'btn danger'; 
-      db.textContent = 'Sil';
+      db.textContent = t('delete');
       db.onclick = async () => {
-        if (!confirm('Olay silinsin mi?')) return;
+        if (!confirm(t('confirmDeleteEvent'))) return;
         db.disabled = true;
         try {
           const url = (currentUser.role === 'user') ? `/api/olay/${e.olay_id}` : `/api/admin/olay/${e.olay_id}`;
@@ -2610,7 +2783,7 @@ function syncEventsMapWithFilteredEvents(){
 
 /* ==================== TABLE RENDER FUNCTIONS ==================== */
 
-// Table of Event Types
+// Event Types Table
 function renderTypeTableRows(data) {
   const tb = qs('#type-tbody');
   if (!tb) return;
@@ -2618,7 +2791,7 @@ function renderTypeTableRows(data) {
   tb.innerHTML = '';
   
   if (data.length === 0) {
-    tb.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);">Kayıt bulunamadı</td></tr>';
+    tb.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);">${t('noRecordsFound')}</td></tr>`;
     return;
   }
   
@@ -2637,15 +2810,15 @@ function renderTypeTableRows(data) {
        (t.created_by_id === currentUser.id || t.created_by_name === currentUser.username))
     );
     
-    const goodText = (t.good === true || t.good === 'true' || t.good === 1) ? 'Faydalı' : 'Faydasız';
+    const goodText = (t.good === true || t.good === 'true' || t.good === 1) ? window.t('beneficial') : window.t('notBeneficial');
     
     const updateBtn = canUpdate 
-      ? `<button class="btn ghost" data-update-type="${t.o_id}" data-type-name="${escapeHtml(t.o_adi)}" data-type-good="${t.good === true || t.good === 'true' || t.good === 1 ? 'true' : 'false'}" style="margin-right:4px;">Update</button>`
-      : `<button class="btn ghost" disabled title="You have no authority" style="margin-right:4px;">Update</button>`;
+      ? `<button class="btn ghost" data-update-type="${t.o_id}" data-type-name="${escapeHtml(t.o_adi)}" data-type-good="${t.good === true || t.good === 'true' || t.good === 1 ? 'true' : 'false'}" style="margin-right:4px;">${window.t('update')}</button>`
+      : `<button class="btn ghost" disabled title="${window.t('noPermission')}" style="margin-right:4px;">${window.t('update')}</button>`;
     
     const deleteBtn = canDelete 
-      ? `<button class="btn danger" data-del-type="${t.o_id}">Delete</button>`
-      : `<button class="btn danger" disabled title="You have no authority">Delete</button>`;
+      ? `<button class="btn danger" data-del-type="${t.o_id}">${window.t('delete')}</button>`
+      : `<button class="btn danger" disabled title="${window.t('noPermission')}">${window.t('delete')}</button>`;
     
     tr.innerHTML = `
       <td>${escapeHtml(t.o_adi)}</td>
@@ -2656,28 +2829,26 @@ function renderTypeTableRows(data) {
     tb.appendChild(tr);
   });
   
-  // Add events to delete buttons
   qsa('[data-del-type]:not([disabled])').forEach(b => {
     b.onclick = async () => {
-      if (!confirm('Bu tür ve bağlı olaylar silinsin mi?')) return;
+      if (!confirm(window.t('confirmDeleteType'))) return;
       b.disabled = true;
       try { 
         const resp = await fetch('/api/admin/olaylar/' + b.getAttribute('data-del-type'), {method:'DELETE'});
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
-          toast('Silme başarısız: ' + (data.message || data.error || resp.status), 'error');
+          toast(window.t('deleteFailed') + ': ' + (data.message || data.error || resp.status), 'error');
         } else {
-          toast('Olay türü silindi', 'success');
+          toast(window.t('typeDeleted'), 'success');
         }
       } catch(e) {
-        toast('Silme hatası: ' + e.message, 'error');
+        toast(window.t('deleteError') + ': ' + e.message, 'error');
       }
       await Promise.all([loadOlayTypes(), loadExistingEvents(), refreshAdminEvents()]);
       b.disabled = false;
     };
   });
   
-  // Add events to update buttons
   qsa('[data-update-type]:not([disabled])').forEach(b => {
     b.onclick = () => {
       const typeId = b.getAttribute('data-update-type');
@@ -2698,7 +2869,7 @@ function openUpdateTypeModal(typeId, currentName, currentGood) {
   const cancelBtn = qs('#update-type-cancel-btn');
   
   if (!modal || !input || !saveBtn || !cancelBtn) {
-    console.error('Güncelleme modal elemanları bulunamadı');
+    console.error('Update modal elements not found');
     return;
   }
   
@@ -2713,20 +2884,19 @@ function openUpdateTypeModal(typeId, currentName, currentGood) {
   saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
   cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
   
-  // Save button
   newSaveBtn.onclick = async () => {
     const newName = input.value.trim();
     const newGood = goodRadioYes ? goodRadioYes.checked : false;
     
     if (!newName) {
-      toast('Olay türü adı boş olamaz', 'error');
+      toast(t('typeNameRequired'), 'error');
       return;
     }
     
     const goodChanged = (newGood !== (currentGood === true || currentGood === 'true' || currentGood === 1));
     
     if (newName === currentName && !goodChanged) {
-      toast('Değişiklik yapılmadı', 'error');
+      toast(t('noChanges'), 'error');
       closeModal(modal);
       return;
     }
@@ -2741,13 +2911,13 @@ function openUpdateTypeModal(typeId, currentName, currentGood) {
       const data = await resp.json().catch(() => ({}));
       
       if (!resp.ok) {
-        toast('Güncelleme başarısız: ' + (data.message || data.error || resp.status), 'error');
+        toast(t('updateFailed') + ': ' + (data.message || data.error || resp.status), 'error');
       } else {
-        toast('Olay türü güncellendi', 'success');
+        toast(t('typeUpdated'), 'success');
         closeModal(modal);
       }
     } catch(e) {
-      toast('Güncelleme hatası: ' + e.message, 'error');
+      toast(t('updateError') + ': ' + e.message, 'error');
     } finally {
       newSaveBtn.disabled = false;
     }
@@ -2755,11 +2925,11 @@ function openUpdateTypeModal(typeId, currentName, currentGood) {
     await Promise.all([loadOlayTypes(), loadExistingEvents(), refreshAdminEvents()]);
   };
   
-  // Cancel button
   newCancelBtn.onclick = () => {
     closeModal(modal);
   };
 }
+
 // Users Table
 function renderUserTableRows(data) {
   const tb = qs('#user-tbody');
@@ -2768,7 +2938,7 @@ function renderUserTableRows(data) {
   tb.innerHTML = '';
   
   if (data.length === 0) {
-    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);">Kayıt bulunamadı</td></tr>';
+    tb.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);">${t('noRecordsFound')}</td></tr>`;
     return;
   }
   
@@ -2786,25 +2956,24 @@ function renderUserTableRows(data) {
     }
     
     const deleteBtn = canDelete
-      ? `<button class="btn danger" data-del-user="${u.id}">Sil</button>`
-      : `<button class="btn danger" disabled title="Yetkiniz yok">Sil</button>`;
+      ? `<button class="btn danger" data-del-user="${u.id}">${t('delete')}</button>`
+      : `<button class="btn danger" disabled title="${t('noPermission')}">${t('delete')}</button>`;
     
     tr.innerHTML = `
       <td>${escapeHtml(u.username)}</td>
       <td>${escapeHtml(u.role)}</td>
       <td>${escapeHtml(u.email || '')}</td>
-      <td>${u.email_verified ? 'Evet' : 'Hayır'}</td>
+      <td>${u.email_verified ? t('yes') : t('no')}</td>
       <td>${deleteBtn}</td>
     `;
     tb.appendChild(tr);
   });
   
-  // Add events to delete buttons
   qsa('[data-del-user]:not([disabled])').forEach(b => {
     b.onclick = async () => {
       const id = b.getAttribute('data-del-user');
       const isSelf = currentUser && String(currentUser.id) === String(id);
-      const confirmMsg = isSelf ? 'Kendi hesabınızı silmek istediğinize emin misiniz?' : 'Kullanıcı silinsin mi?';
+      const confirmMsg = isSelf ? t('confirmDeleteOwnAccount') : t('confirmDeleteUser');
       
       if (!confirm(confirmMsg)) return;
       b.disabled = true;
@@ -2813,19 +2982,19 @@ function renderUserTableRows(data) {
         const data = await resp.json().catch(() => ({}));
         
         if (!resp.ok) {
-          toast('Silme başarısız: ' + (data.message || data.error || resp.status), 'error');
+          toast(t('deleteFailed') + ': ' + (data.message || data.error || resp.status), 'error');
         } else {
-          toast('Kullanıcı silindi', 'success');
+          toast(t('userDeleted'), 'success');
         }
         
         if (resp.headers.get('X-Logged-Out') === '1' || isSelf) {
-          alert('Hesabınız pasifleştirildi. Giriş ekranına yönlendiriliyorsunuz.');
+          alert(t('accountDeactivatedRedirect'));
           await logout(); 
           location.reload(); 
           return;
         }
       } catch(e) {
-        toast('Silme hatası: ' + e.message, 'error');
+        toast(t('deleteError') + ': ' + e.message, 'error');
       }
       await Promise.all([
         refreshAdminUsers(),
@@ -2837,32 +3006,14 @@ function renderUserTableRows(data) {
     };
   });
 }
-/* ==================== DATE FORMATTING ==================== */
-function formatDate(dateInput) {
-  if (!dateInput) return '-';
-  
-  try {
-    const d = new Date(dateInput);
-    if (isNaN(d.getTime())) return '-';
-    
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const year = d.getFullYear();
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    
-    return `${day}.${month}.${year} ${hours}:${minutes}`;
-  } catch {
-    return '-';
-  }
-}
+
+// Events Table
 function renderEventTableRows(data) {
   const tb = qs('#event-tbody');
   if (!tb) return;
   
   tb.innerHTML = '';
   
-  // ADD EXPORT BUTTON TO TABLE HEADER (admin/supervisor only)
   const eventsTable = qs('#events-table');
   if (eventsTable && currentUser && (currentUser.role === 'admin' || currentUser.role === 'supervisor')) {
     eventsTable.querySelectorAll('.table-export-btn').forEach(btn => btn.remove());
@@ -2874,8 +3025,8 @@ function renderEventTableRows(data) {
         if (!lastTh.querySelector('.table-export-btn')) {
           const exportBtn = document.createElement('button');
           exportBtn.className = 'btn ghost icon-btn table-export-btn';
-          exportBtn.innerHTML = '<img src="/download.svg" alt="İndir" width="18" height="18" />';
-          exportBtn.title = 'Filtrelenmiş olayları GeoJSON olarak indir';
+          exportBtn.innerHTML = '<img src="/download.svg" alt="' + t('download') + '" width="18" height="18" />';
+          exportBtn.title = t('downloadFilteredEventsGeoJSON');
           exportBtn.style.cssText = 'margin-left: 8px; vertical-align: middle;';
           exportBtn.onclick = downloadFilteredEventsAsGeoJSON;
           lastTh.appendChild(exportBtn);
@@ -2885,7 +3036,7 @@ function renderEventTableRows(data) {
   }
   
   if (data.length === 0) {
-    tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);">Kayıt bulunamadı</td></tr>';
+    tb.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted);">${t('noRecordsFound')}</td></tr>`;
     return;
   }
   
@@ -2894,8 +3045,8 @@ function renderEventTableRows(data) {
     const creatorId = (o.created_by_id != null) ? String(o.created_by_id) : '-';
     const who = creatorName ? `${creatorName} (ID: ${creatorId})` : '-';
     
-    const hasPhoto = Array.isArray(o.photo_urls) && o.photo_urls.length > 0 ? 'Var' : 'Yok';
-    const hasVideo = Array.isArray(o.video_urls) && o.video_urls.length > 0 ? 'Var' : 'Yok';
+    const hasPhoto = Array.isArray(o.photo_urls) && o.photo_urls.length > 0 ? t('available') : t('notAvailable');
+    const hasVideo = Array.isArray(o.video_urls) && o.video_urls.length > 0 ? t('available') : t('notAvailable');
     
     const rawDate = o.created_at || o.eklenme_tarihi || null;
     const dateStr = rawDate ? formatDate(rawDate) : '-';
@@ -2908,14 +3059,14 @@ function renderEventTableRows(data) {
       <td>${hasPhoto}</td>
       <td>${hasVideo}</td>
       <td>${dateStr}</td>
-      <td><button class="btn danger" data-del-olay="${o.olay_id}">Sil</button></td>
+      <td><button class="btn danger" data-del-olay="${o.olay_id}">${t('delete')}</button></td>
     `;
     tb.appendChild(tr);
   });
   
   qsa('[data-del-olay]').forEach(b => {
     b.onclick = async () => {
-      if (!confirm('Olay silinsin mi?')) return;
+      if (!confirm(t('confirmDeleteEvent'))) return;
       b.disabled = true;
       try {
         const id = b.getAttribute('data-del-olay');
@@ -2924,12 +3075,12 @@ function renderEventTableRows(data) {
         const data = await resp.json().catch(() => ({}));
         
         if (!resp.ok) {
-          toast('Silme başarısız: ' + (data.message || data.error || resp.status), 'error');
+          toast(t('deleteFailed') + ': ' + (data.message || data.error || resp.status), 'error');
         } else {
-          toast('Olay silindi', 'success');
+          toast(t('eventDeleted'), 'success');
         }
       } catch(e) {
-        toast('Silme hatası: ' + e.message, 'error');
+        toast(t('deleteError') + ': ' + e.message, 'error');
       }
       await Promise.all([loadExistingEvents(), refreshAdminEvents()]);
       b.disabled = false;
@@ -2949,7 +3100,7 @@ async function loadOlayTypes() {
     const list = await r.json();
 
     if (sel) {
-      sel.innerHTML = '<option value="">-- Seçiniz --</option>';
+      sel.innerHTML = `<option value="">-- ${t('pleaseSelect')} --</option>`;
       list.forEach(o => {
         const opt = document.createElement('option');
         opt.value = String(o.o_id);
@@ -2970,11 +3121,10 @@ async function loadOlayTypes() {
     renderTable('types');
     return list;
   } catch (e) {
-    setError(qs('#error-message'), 'Olay türleri yüklenemedi.');
+    setError(qs('#error-message'), t('eventTypesLoadFailed'));
     return [];
   }
 }
-
 
 function initTypePickerUI(){
   const sel = qs('#olay_turu');
@@ -2991,7 +3141,7 @@ function initTypePickerUI(){
 
 async function refreshAdminUsers(){
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'supervisor')) {
-    console.warn('refreshAdminUsers: Yetkisiz çağrı engellendi');
+    console.warn('refreshAdminUsers: Unauthorized call blocked');
     return;
   }
   
@@ -2999,7 +3149,7 @@ async function refreshAdminUsers(){
     const r = await fetch('/api/admin/users');
     if (!r.ok) {
       if (r.status === 403) {
-        console.warn('refreshAdminUsers: 403 Forbidden - erişim reddedildi');
+        console.warn('refreshAdminUsers: 403 Forbidden - access denied');
         return;
       }
       throw 0;
@@ -3092,21 +3242,21 @@ async function loadPageSizeSettings() {
     tableStates.types.pageSize = cfg.pageSizeTypes > 0 ? cfg.pageSizeTypes : null;
     tableStates.users.pageSize = cfg.pageSizeUsers > 0 ? cfg.pageSizeUsers : null;
   } catch(e) {
-    console.warn('Sayfa boyutu ayarları yüklenemedi, varsayılan değerler kullanılıyor');
+    console.warn('Page size settings could not be loaded, using defaults');
     tableStates.events.pageSize = null;
     tableStates.types.pageSize = null;
     tableStates.users.pageSize = null;
   }
 }
 
-/* ==================== ADDING EVENT TYPE ==================== */
+/* ==================== EVENT TYPE CREATION ==================== */
 qs('#btn-add-type')?.addEventListener('click', async () => {
   const name = qs('#new-type-name')?.value.trim();
   const goodRadioYes = qs('#new-type-good-yes');
   const good = goodRadioYes ? goodRadioYes.checked : false;
   
   if (!name) { 
-    toast('Lütfen tür adı girin', 'error'); 
+    toast(t('pleaseEnterTypeName'), 'error'); 
     return; 
   }
   
@@ -3122,12 +3272,12 @@ qs('#btn-add-type')?.addEventListener('click', async () => {
     const data = await r.json().catch(() => ({}));
     
     if (!r.ok) {
-      const errorMsg = data.message || data.error || 'Bilinmeyen hata';
+      const errorMsg = data.message || data.error || t('unknownError');
       
       if (r.status === 409 || errorMsg.toLowerCase().includes('duplicate') || errorMsg.toLowerCase().includes('zaten')) {
-        toast('Aynı ad ile olay türü ekleyemezsiniz (Aktif veya pasif bir kayıt mevcut)', 'error', 4000);
+        toast(t('duplicateTypeError'), 'error', 4000);
       } else {
-        toast('Olay türü eklenemedi: ' + errorMsg, 'error');
+        toast(t('typeAddFailed') + ': ' + errorMsg, 'error');
       }
       throw new Error(errorMsg);
     }
@@ -3135,32 +3285,26 @@ qs('#btn-add-type')?.addEventListener('click', async () => {
     const nt = qs('#new-type-name');
     if (nt) nt.value = '';
     
-    // Reset radio buttons
     const goodYes = qs('#new-type-good-yes');
     const goodNo = qs('#new-type-good-no');
     if (goodYes) goodYes.checked = true;
     if (goodNo) goodNo.checked = false;
     
     await loadOlayTypes();
-    toast('Yeni olay türü eklendi', 'success');
+    toast(t('newTypeAdded'), 'success');
   } catch(e) {
-    console.error('Tür ekleme hatası:', e);
+    console.error('Type add error:', e);
   } finally {
     if (btn) btn.disabled = false;
   }
 });
 
-
-
-/* ==================== MAP AND INCIDENT MANAGEMENT ==================== */
+/* ==================== MAP AND EVENT MANAGEMENT ==================== */
 
 function allowBlackMarker() {
   if (window.SUPERVISOR_NO_ADD) return false;
   return !!(currentUser && currentUser.role === 'user');
 }
-
-
-
 
 function updateClickMarkerFromInputs(){
   const latEl = qs('#lat'); 
@@ -3171,7 +3315,7 @@ function updateClickMarkerFromInputs(){
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
   const ll = L.latLng(lat, lng);
   if (clickMarker) clickMarker.setLatLng(ll);
-  else clickMarker = L.marker(ll, { icon: BLACK_PIN() }).addTo(map).bindPopup('Seçili konum');
+  else clickMarker = L.marker(ll, { icon: BLACK_PIN() }).addTo(map).bindPopup(t('selectedLocation'));
 }
 
 ['#lat','#lng'].forEach(id => qs(id)?.addEventListener('input', updateClickMarkerFromInputs));
@@ -3189,8 +3333,8 @@ async function populateEventMedia(container, evt){
         const tiles = arr.map(u => {
           const src = normalizeUploadUrl(u);
           return `
-            <a href="#" class="popup-photo-link" data-src="${src}" title="Foto">
-              <img src="${src}" alt="foto" loading="lazy" style="width:100%;height:100px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" />
+            <a href="#" class="popup-photo-link" data-src="${src}" title="${t('photo')}">
+              <img src="${src}" alt="${t('photo')}" loading="lazy" style="width:100%;height:100px;object-fit:cover;border-radius:8px;border:1px solid var(--border);" />
             </a>`;
         }).join('');
         photoBox.innerHTML = `<div class="grid grid-2" style="gap:6px">${tiles}</div>`;
@@ -3201,18 +3345,18 @@ async function populateEventMedia(container, evt){
           });
         });
       } else {
-        photoBox.innerHTML = '<div class="muted">Fotoğraf yok.</div>';
+        photoBox.innerHTML = `<div class="muted">${t('noPhoto')}</div>`;
       }
     }
 
-    //Videos
+    // Videos
     if (videoBox) {
       const arr = Array.isArray(evt.video_urls) ? evt.video_urls : [];
       if (arr.length) {
         const tiles = arr.map(u => {
           const src = normalizeUploadUrl(u);
           return `
-            <a href="#" class="popup-video-link" data-src="${src}" title="Video">
+            <a href="#" class="popup-video-link" data-src="${src}" title="${t('video')}">
               <video src="${src}" muted style="width:100%;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border);"></video>
             </a>`;
         }).join('');
@@ -3224,12 +3368,76 @@ async function populateEventMedia(container, evt){
           });
         });
       } else {
-        videoBox.innerHTML = '<div class="muted">Video yok.</div>';
+        videoBox.innerHTML = `<div class="muted">${t('noVideo')}</div>`;
       }
     }
   } catch(err) {
     console.error('populateEventMedia error:', err);
   }
+}
+function recreatePopupContent(evt, marker) {
+  const turHtml = evt.olay_turu_adi ? `<b>${t('type')}:</b> ${escapeHtml(evt.olay_turu_adi)}<br>` : '';
+  const creatorName = evt.created_by_username ?? '';
+  const creatorId = (evt.created_by_id != null) ? String(evt.created_by_id) : '-';
+  const who = creatorName ? `${creatorName} (ID: ${creatorId})` : '-';
+
+  const mediaHtml = `
+    <div><b>${t('photo')}:</b></div>
+    <div class="popup-photos"><div data-ph="${evt.olay_id}"></div></div>
+    <div style="height:6px"></div>
+    <div><b>${t('video')}:</b></div>
+    <div class="popup-videos"><div data-vd="${evt.olay_id}"></div></div>
+  `;
+
+  const content = document.createElement('div');
+  content.innerHTML = `
+    <div style="margin-bottom:6px;">
+      <b>${t('eventID')}:</b> ${evt.olay_id}
+      <span class="badge ${evt.is_mine ? 'mine' : 'other'}" style="margin-left:6px;">${evt.is_mine ? t('mine') : t('other')}</span>
+    </div>
+    ${turHtml}
+    <div class="popup-body"><b>${t('description')}:</b> ${evt.aciklama ? escapeHtml(evt.aciklama) : ''}</div>
+    ${mediaHtml}
+    ${currentUser ? `<div class="popup-meta"><b>${t('addedBy')}:</b> ${escapeHtml(who)}</div>` : ''}
+    <div class="inline" style="gap:6px; margin-top:8px;"></div>
+  `;
+
+  const btnRow = content.querySelector('.inline');
+
+  const canEdit = (currentUser && (currentUser.role === 'admin' || (currentUser.role === 'user' && evt.is_mine)));
+  if (canEdit) {
+    const eb = document.createElement('button');
+    eb.className = 'btn ghost'; 
+    eb.textContent = t('update');
+    eb.onclick = () => beginEdit(evt);
+    btnRow.appendChild(eb);
+  }
+
+  const canDelete = currentUser && (
+    (currentUser.role === 'user' && evt.is_mine) ||
+    (currentUser.role === 'supervisor') ||
+    (currentUser.role === 'admin')
+  );
+  if (canDelete) {
+    const db = document.createElement('button');
+    db.className = 'btn danger'; 
+    db.textContent = t('delete');
+    db.onclick = async () => {
+      if (!confirm(t('confirmDeleteEvent'))) return;
+      db.disabled = true;
+      try {
+        const url = (currentUser.role === 'user') ? `/api/olay/${evt.olay_id}` : `/api/admin/olay/${evt.olay_id}`;
+        await fetch(url, {method:'DELETE'});
+        await Promise.all([loadExistingEvents({ publicMode:false }), refreshAdminEvents()]);
+      } catch(err) {
+        console.error('delete event error:', err);
+      } finally { db.disabled = false; }
+    };
+    btnRow.appendChild(db);
+  }
+
+  marker.setPopupContent(content);
+  populateEventMedia(content, evt);
 }
 
 function normalizeUploadUrl(u){
@@ -3244,7 +3452,7 @@ async function loadExistingEvents(opts = {}) {
   if (publicMode) {
     const showGood = boolFromConfigValue(APP_CONFIG.showGoodEventsOnLogin);
     const showBad = boolFromConfigValue(APP_CONFIG.showBadEventsOnLogin);
-    
+
     if (!showGood && !showBad) {
       eventIndex.clear();
       if (markersLayer) markersLayer.clearLayers();
@@ -3255,7 +3463,6 @@ async function loadExistingEvents(opts = {}) {
     const resp = await fetch('/api/olaylar_tum');
     if (!resp.ok) throw 0;
     let events = await resp.json();
-
 
     if (publicMode) {
       const showGood = boolFromConfigValue(APP_CONFIG.showGoodEventsOnLogin);
@@ -3272,7 +3479,6 @@ async function loadExistingEvents(opts = {}) {
         if (showBad && !isGood) return true;  
         return false;
       });
-      
     }
 
     eventIndex.clear();
@@ -3290,6 +3496,7 @@ async function loadExistingEvents(opts = {}) {
 
       const lat = parseFloat(e2.enlem), lng = parseFloat(e2.boylam);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        console.warn('[loadExistingEvents] Invalid coordinates, event:', e2.olay_id);
         return;
       }
 
@@ -3299,29 +3506,29 @@ async function loadExistingEvents(opts = {}) {
         addedMarkers++;
       }
 
-      const turHtml = e2.olay_turu_adi ? `<b>Tür:</b> ${escapeHtml(e2.olay_turu_adi)}<br>` : '';
+      const turHtml = e2.olay_turu_adi ? `<b>${t('type')}:</b> ${escapeHtml(e2.olay_turu_adi)}<br>` : '';
       const creatorName = e2.created_by_username ?? '';
       const creatorId = (e2.created_by_id != null) ? String(e2.created_by_id) : '-';
       const who = creatorName ? `${creatorName} (ID: ${creatorId})` : '-';
 
       const mediaHtml = `
-        <div><b>Fotoğraf:</b></div>
+        <div><b>${t('photo')}:</b></div>
         <div class="popup-photos"><div data-ph="${e2.olay_id}"></div></div>
         <div style="height:6px"></div>
-        <div><b>Video:</b></div>
+        <div><b>${t('video')}:</b></div>
         <div class="popup-videos"><div data-vd="${e2.olay_id}"></div></div>
       `;
 
       const content = document.createElement('div');
       content.innerHTML = `
         <div style="margin-bottom:6px;">
-          <b>Olay ID:</b> ${e2.olay_id}
-          <span class="badge ${e2.is_mine ? 'mine' : 'other'}" style="margin-left:6px;">${e2.is_mine ? 'Benim' : 'Diğer'}</span>
+          <b>${t('eventID')}:</b> ${e2.olay_id}
+          <span class="badge ${e2.is_mine ? 'mine' : 'other'}" style="margin-left:6px;">${e2.is_mine ? t('mine') : t('other')}</span>
         </div>
         ${turHtml}
-        <div class="popup-body"><b>Açıklama:</b> ${e2.aciklama ? escapeHtml(e2.aciklama) : ''}</div>
+        <div class="popup-body"><b>${t('description')}:</b> ${e2.aciklama ? escapeHtml(e2.aciklama) : ''}</div>
         ${mediaHtml}
-        ${publicMode ? '' : `<div class="popup-meta"><b>Ekleyen:</b> ${escapeHtml(who)}</div>`}
+        ${publicMode ? '' : `<div class="popup-meta"><b>${t('addedBy')}:</b> ${escapeHtml(who)}</div>`}
         <div class="inline" style="gap:6px; margin-top:8px;"></div>
       `;
       const btnRow = content.querySelector('.inline');
@@ -3330,7 +3537,7 @@ async function loadExistingEvents(opts = {}) {
       if (canEdit) {
         const eb = document.createElement('button');
         eb.className = 'btn ghost'; 
-        eb.textContent = 'Güncelle';
+        eb.textContent = t('update');
         eb.onclick = () => beginEdit(e2);
         btnRow.appendChild(eb);
       }
@@ -3343,9 +3550,9 @@ async function loadExistingEvents(opts = {}) {
       if (canDelete) {
         const db = document.createElement('button');
         db.className = 'btn danger'; 
-        db.textContent = 'Sil';
+        db.textContent = t('delete');
         db.onclick = async () => {
-          if (!confirm('Olay silinsin mi?')) return;
+          if (!confirm(t('confirmDeleteEvent'))) return;
           db.disabled = true;
           try {
             const url = (currentUser.role === 'user') ? `/api/olay/${e2.olay_id}` : `/api/admin/olay/${e2.olay_id}`;
@@ -3359,19 +3566,23 @@ async function loadExistingEvents(opts = {}) {
       }
 
       m.bindPopup(content);
-      m.on('popupopen', () => populateEventMedia(content, e2));
+      m.on('popupopen', () => {
+      recreatePopupContent(e2, m);
+      });
     });
 
     try { 
       if (map) ensureMapLegend(map); 
     } catch(e) {
+      console.warn('[loadExistingEvents] Legend could not be updated:', e);
     }
 
   } catch(err) {
+    console.error('loadExistingEvents error:', err);
   }
 }
 
-/* ==================== INCIDENT FORM ==================== */
+/* ==================== EVENT FORM ==================== */
 
 function beginEdit(evt){
   editingEventId = evt.olay_id;
@@ -3398,7 +3609,7 @@ function beginEdit(evt){
 
   const submitBtn = qs('#submit-btn');
   if (submitBtn) {
-    submitBtn.textContent = 'Güncelle';
+    submitBtn.textContent = t('update');
     submitBtn.classList.add('updating');
   }
 
@@ -3417,7 +3628,6 @@ function beginEdit(evt){
 
   qs('#olay-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-
 
 function resetEdit(){
   editingEventId = null;
@@ -3451,10 +3661,11 @@ function resetEdit(){
   
   const submitBtn = qs('#submit-btn');
   if (submitBtn) {
-    submitBtn.textContent = 'Gönder';
+    submitBtn.textContent = t('submit');
     submitBtn.classList.remove('updating');
   }
 }
+
 async function submitOlay(){
   const errEl = qs('#error-message'); 
   clearError(errEl);
@@ -3475,9 +3686,9 @@ async function submitOlay(){
   };
 
   if (!Number.isFinite(payload.enlem) || !Number.isFinite(payload.boylam)) 
-    return setError(errEl, 'Lütfen konum girin.');
+    return setError(errEl, t('pleaseEnterLocation'));
   if (!payload.olay_turu) 
-    return setError(errEl, 'Lütfen bir olay türü seçin.');
+    return setError(errEl, t('pleaseSelectEventType'));
 
   const btn = qs('#submit-btn'); 
   if (btn) btn.disabled = true;
@@ -3495,7 +3706,7 @@ async function submitOlay(){
       });
       d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.message || d.error || r.status);
-      toast('Olay güncellendi (#' + editedEventId + ')', 'success');
+      toast(t('eventUpdated', {id: editedEventId}), 'success');
     } else {
       r = await fetch('/api/submit_olay', { 
         method:'POST', 
@@ -3504,7 +3715,7 @@ async function submitOlay(){
       });
       d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.message || d.error || r.status);
-      toast('Olay eklendi (#' + d.olay_id + ')', 'success');
+      toast(t('eventAdded', {id: d.olay_id}), 'success');
     }
     
     photoUrls = []; 
@@ -3527,7 +3738,6 @@ async function submitOlay(){
       const mapEl = document.getElementById('map');
       if (mapEl) {
         mapEl.classList.remove('blur-background');
-        console.log('[SUBMIT] Blur kaldırıldı');
       }
       
       document.querySelectorAll('.header-back-btn, .card-back-btn').forEach(btn => btn.remove());
@@ -3550,17 +3760,18 @@ async function submitOlay(){
               }
             });
           } catch(e) {
-            console.warn('Popup açılamadı:', e);
+            console.warn('Popup could not be opened:', e);
           }
         }, 500);
       }
     }
   } catch(e) { 
-    setError(errEl, 'İşlem hatası: ' + e.message); 
+    setError(errEl, t('operationError') + ': ' + e.message); 
   } finally { 
     if (btn) btn.disabled = false; 
   }
 }
+
 qs('#submit-btn')?.addEventListener('click', submitOlay);
 qs('#cancel-edit-btn')?.addEventListener('click', resetEdit);
 
@@ -3571,13 +3782,13 @@ function setLocateUI(running){
   const btnStop = qs('#btn-stop-live');
   if (btnUse){
     if (running) {
-      btnUse.innerHTML = `<img src="/dontuseposition.svg" alt="cancel" width="20" height="20" style="opacity:0.6" />`;
+      btnUse.innerHTML = `<img src="/dontuseposition.svg" alt="${t('cancel')}" width="20" height="20" style="opacity:0.6" />`;
       btnUse.classList.add('danger');
-      btnUse.title = 'Cancel position';
+      btnUse.title = t('cancelLocation');
     } else {
-      btnUse.innerHTML = `<img src="/useposition.svg" alt="Position" width="20" height="20" />`;
+      btnUse.innerHTML = `<img src="/useposition.svg" alt="${t('location')}" width="20" height="20" />`;
       btnUse.classList.remove('danger');
-      btnUse.title = 'use my position';
+      btnUse.title = t('useMyLocation');
     }
   }
   if (btnStop){ 
@@ -3609,7 +3820,7 @@ function geoFindMeStart() {
 
       const ll = L.latLng(latitude, longitude);
       if (liveMarker) liveMarker.setLatLng(ll);
-      else liveMarker = L.marker(ll, { icon: BLACK_PIN() }).addTo(map).bindPopup('My Position');
+      else liveMarker = L.marker(ll, { icon: BLACK_PIN() }).addTo(map).bindPopup(t('myLocation'));
 
       map.setView(ll, Math.max(map.getZoom(), 17), { animate:true });
       startLiveLocation();
@@ -3618,7 +3829,6 @@ function geoFindMeStart() {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
   );
 }
-
 
 function startLiveLocation(){
   if (!("geolocation" in navigator)) return;
@@ -3636,7 +3846,7 @@ function startLiveLocation(){
 
       const ll = L.latLng(latitude, longitude);
       if (liveMarker) liveMarker.setLatLng(ll);
-      else liveMarker = L.marker(ll, {icon: BLACK_PIN()}).addTo(map).bindPopup('My Position');
+      else liveMarker = L.marker(ll, {icon: BLACK_PIN()}).addTo(map).bindPopup(t('myLocation'));
 
       if (Number.isFinite(accuracy)) {
         if (liveAccuracyCircle) liveAccuracyCircle.setLatLng(ll).setRadius(accuracy);
@@ -3650,7 +3860,6 @@ function startLiveLocation(){
   );
   setLocateUI(true);
 }
-
 
 function stopLiveLocation(){
   if (liveWatchId !== null) {
@@ -3692,19 +3901,18 @@ function renderMediaLists(){
         <div class="media-grid-vertical">
           ${photoUrls.map((u, idx) => (
             `<div class="media-thumb-wrapper" style="position:relative;">
-              <a href="${u}" class="media-thumb" title="Photo ${idx+1}" data-open-full="img" data-in-form="true" style="display:block; position:relative;">
-                <img src="${u}" alt="foto" loading="lazy" style="width:100%; height:120px; object-fit:cover; display:block; border-radius:6px;" />
+              <a href="${u}" class="media-thumb" title="${t('photo')} ${idx+1}" data-open-full="img" data-in-form="true" style="display:block; position:relative;">
+                <img src="${u}" alt="${t('photo')}" loading="lazy" style="width:100%; height:120px; object-fit:cover; display:block; border-radius:6px;" />
               </a>
-              <button class="media-remove-btn" data-remove-photo="${idx}" type="button" title="Delete Photo" style="position:absolute; top:4px; right:4px; z-index:10;">×</button>
+              <button class="media-remove-btn" data-remove-photo="${idx}" type="button" title="${t('deletePhoto')}" style="position:absolute; top:4px; right:4px; z-index:10;">×</button>
             </div>`
           )).join('')}
         </div>
       </div>`;
   } else {
-    photoCol.innerHTML = '<div class="muted">no photo</div>';
+    photoCol.innerHTML = `<div class="muted">${t('noPhoto')}</div>`;
   }
 
-  // VIDEOS (RIGHT)
   const videoCol = document.createElement('div');
   if (videoUrls.length) {
     const hasScroll = videoUrls.length > 2;
@@ -3717,21 +3925,20 @@ function renderMediaLists(){
         <div class="media-grid-vertical">
           ${videoUrls.map((u, idx) => (
             `<div class="media-thumb-wrapper" style="position:relative;">
-              <a href="${u}" class="media-thumb" title="Video ${idx+1}" data-open-full="video" data-in-form="true" style="display:block; position:relative;">
+              <a href="${u}" class="media-thumb" title="${t('video')} ${idx+1}" data-open-full="video" data-in-form="true" style="display:block; position:relative;">
                 <video src="${u}" muted style="width:100%; height:120px; object-fit:cover; display:block; border-radius:6px;"></video>
               </a>
-              <button class="media-remove-btn" data-remove-video="${idx}" type="button" title="Delete Video" style="position:absolute; top:4px; right:4px; z-index:10;">×</button>
+              <button class="media-remove-btn" data-remove-video="${idx}" type="button" title="${t('deleteVideo')}" style="position:absolute; top:4px; right:4px; z-index:10;">×</button>
             </div>`
           )).join('')}
         </div>
       </div>`;
   } else {
-    videoCol.innerHTML = '<div class="muted">no video</div>';
+    videoCol.innerHTML = `<div class="muted">${t('noVideo')}</div>`;
   }
 
   mediaWrapper.appendChild(photoCol);
   mediaWrapper.appendChild(videoCol);
-
 
   if (ph) {
     ph.innerHTML = '';
@@ -3761,10 +3968,10 @@ function renderMediaLists(){
       e.preventDefault();
       e.stopPropagation();
       const idx = parseInt(btn.getAttribute('data-remove-photo'), 10);
-      if (confirm('Are you sure you want to remove this photo?')) {
+      if (confirm(t('confirmRemovePhoto'))) {
         photoUrls.splice(idx, 1);
         renderMediaLists();
-        toast('Photo removed', 'success');
+        toast(t('photoRemoved'), 'success');
       }
     });
   });
@@ -3774,10 +3981,10 @@ function renderMediaLists(){
       e.preventDefault();
       e.stopPropagation();
       const idx = parseInt(btn.getAttribute('data-remove-video'), 10);
-      if (confirm('Are you sure you want to remove this video?')) {
+      if (confirm(t('confirmRemoveVideo'))) {
         videoUrls.splice(idx, 1);
         renderMediaLists();
-        toast('Video removed', 'success');
+        toast(t('videoRemoved'), 'success');
       }
     });
   });
@@ -3786,7 +3993,7 @@ function renderMediaLists(){
 function readAsDataURL(file){
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
-    fr.onerror = () => reject(new Error('reading error'));
+    fr.onerror = () => reject(new Error(t('readError')));
     fr.onload = () => resolve(fr.result);
     fr.readAsDataURL(file);
   });
@@ -3803,7 +4010,7 @@ async function uploadDataUrl(endpoint, dataUrl){
   const url = (typeof d.url === 'string' && d.url) ? d.url
             : (Array.isArray(d.urls) && d.urls[0]) ? d.urls[0]
             : null;
-  if (!url) throw new Error('invalid_response');
+  if (!url) throw new Error(t('invalidResponse'));
   return normalizeUploadUrl(url);
 }
 
@@ -3814,7 +4021,7 @@ async function handleSelectPhoto(file){
     photoUrls = Array.from(new Set([...(photoUrls || []), url]));
     renderMediaLists();
   } catch(e) { 
-    alert('Photo could not be uploaded: ' + e.message); 
+    alert(t('photoUploadFailed') + ': ' + e.message); 
   }
 }
 
@@ -3825,7 +4032,7 @@ async function handleSelectVideo(file){
     videoUrls = Array.from(new Set([...(videoUrls || []), url]));
     renderMediaLists();
   } catch(e) { 
-    alert('Video could not be loaded: ' + e.message); 
+    alert(t('videoUploadFailed') + ': ' + e.message); 
   }
 }
 
@@ -3842,7 +4049,7 @@ qs('#file-video')?.addEventListener('change', e => {
   e.target.value = '';
 });
 
-/*--------- PHOTO CAMERA MODAL --------- */
+/* --------- PHOTO CAMERA MODAL --------- */
 function stopPmStream(){
   try { pmStream?.getTracks().forEach(t => t.stop()); } catch {}
   pmStream = null;
@@ -3873,7 +4080,7 @@ async function openPhotoModal(){
       v.play?.(); 
     }
   } catch {
-    alert('Camera permission was denied or not found. You can select it from the gallery.');
+    alert(t('cameraPermissionDenied'));
   }
 
   function resetShot(){
@@ -3887,7 +4094,7 @@ async function openPhotoModal(){
 
   if (captureBtn) captureBtn.onclick = () => {
     if (!pmStream){ 
-      alert('The camera did not turn on.'); 
+      alert(t('cameraNotOpened')); 
       return; 
     }
     const trackSettings = pmStream.getVideoTracks()[0]?.getSettings?.() || {};
@@ -3916,17 +4123,17 @@ async function openPhotoModal(){
       renderMediaLists();
       closeModal(modal, stopPmStream);
     } catch(e) { 
-      alert('Installation error: ' + e.message); 
+      alert(t('uploadError') + ': ' + e.message); 
     }
   };
-
   if (galleryBtn) galleryBtn.onclick = () => qs('#file-photo')?.click();
   if (closeBtn) closeBtn.onclick = () => {
     closeModal(modal, stopPmStream);
     if (modal) modal.style.zIndex = '';
   };
 }
-/*--------- VIDEO CAMERA MODAL --------- */
+
+/* --------- VIDEO CAMERA MODAL --------- */
 function stopVm(){
   try { vmRecorder?.stop(); } catch {}
   try { vmStream?.getTracks().forEach(t => t.stop()); } catch {}
@@ -3971,7 +4178,7 @@ async function openVideoModal(){
   if (stopBtn)  hide(stopBtn);
 
   if (!('MediaRecorder' in window)){
-    alert('The device does not support video recording. Select a video from the gallery.');
+    alert(t('videoRecordingNotSupported'));
     closeModal(modal, stopVm);
     qs('#file-video')?.click();
     return;
@@ -3986,7 +4193,7 @@ async function openVideoModal(){
       pv.play?.(); 
     }
   } catch {
-    alert('Camera/microphone permission denied or not found. You can select a video from the gallery.');
+    alert(t('cameraPermissionDenied'));
     closeModal(modal, stopVm);
     qs('#file-video')?.click();
     return;
@@ -3994,7 +4201,7 @@ async function openVideoModal(){
 
   if (startBtn) startBtn.onclick = () => {
     if (!vmStream){ 
-      alert('The camera/microphone did not turn on.'); 
+      alert(t('cameraNotOpened')); 
       return; 
     }
     vmChunks = [];
@@ -4002,7 +4209,7 @@ async function openVideoModal(){
     try {
       vmRecorder = new MediaRecorder(vmStream, mime ? { mimeType: mime } : undefined);
     } catch(e) {
-      alert('Failed to start recording: ' + e.message);
+      alert(t('recordingStartFailed') + ': ' + e.message);
       return;
     }
     vmRecorder.ondataavailable = e => { 
@@ -4010,12 +4217,12 @@ async function openVideoModal(){
     };
     vmRecorder.onerror = (e) => { 
       console.error('Recorder error', e); 
-      toast('Error in video recording', 'error'); 
+      toast(t('videoRecordingError'), 'error'); 
     };
     vmRecorder.onstop = async () => {
       try {
         if (!vmChunks.length){ 
-          toast('No registration has been created, try again.', 'error'); 
+          toast(t('recordingNotCreated'), 'error'); 
           show(startBtn); 
           hide(stopBtn); 
           return; 
@@ -4026,9 +4233,9 @@ async function openVideoModal(){
         videoUrls = Array.from(new Set([...(videoUrls || []), url]));
         renderMediaLists();
         closeModal(modal, stopVm);
-        toast('Video added', 'success');
+        toast(t('videoAdded'), 'success');
       } catch(e) { 
-        alert('Video upload error: ' + e.message); 
+        alert(t('videoUploadError') + ': ' + e.message); 
       }
     };
     vmRecorder.start(250);
@@ -4072,10 +4279,11 @@ function closeModal(m, cleanup){
   
   document.body.style.overflow = '';
 }
+
 function blobToDataUrl(blob){
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
-    fr.onerror = () => reject(new Error('reading error'));
+    fr.onerror = () => reject(new Error(t('readError')));
     fr.onload = () => resolve(fr.result);
     fr.readAsDataURL(blob);
   });
@@ -4083,22 +4291,17 @@ function blobToDataUrl(blob){
 
 /* ==================== AUTH ==================== */
 
-
-
 function pushOverlayState(name){
   try {
     history.pushState({ overlay: name }, '', location.href);
   } catch (e) {
-
   }
 }
 
 function restoreMapViewFromOverlay(){
-
   const mapEl = document.getElementById('map');
   if (mapEl) {
     mapEl.classList.remove('blur-background');
-  } else {
   }
 
   hide(qs('#login-card'));
@@ -4110,6 +4313,7 @@ function restoreMapViewFromOverlay(){
     try { 
       resetEdit(); 
     } catch(e) {
+      console.error('[RESTORE] resetEdit() error:', e);
     }
   }
 
@@ -4118,13 +4322,16 @@ function restoreMapViewFromOverlay(){
   try {
     stopLiveLocation();
   } catch(e) {
+    console.warn('[RESTORE] Live location stop error:', e);
   }
   
   try { 
     history.back(); 
   } catch(e) {
+    console.warn('[RESTORE] history.back() error:', e);
   }
 }
+
 function anyOverlayVisible(){
   const cards = ['#login-card', '#register-card', '#forgot-card', '#olay-card'];
   return cards.some(sel => {
@@ -4245,18 +4452,15 @@ function reflectAuth(){
     body.classList.add(`role-${currentUser.role}`);
   }
 
-
   const headerLocBtn = qs('#btn-use-location');
   if (headerLocBtn) {
     const shouldShow = currentUser && currentUser.role === 'user';
     headerLocBtn.style.display = shouldShow ? 'inline-flex' : 'none';
-    console.log('[HEADER LOCATION BTN] Görünürlük:', shouldShow ? 'GÖSTER' : 'GİZLE');
   }
 
   if (currentUser){
-    
     if (who) { 
-      who.textContent = `Merhaba, ${currentUser.username} (${currentUser.role})`; 
+      who.textContent = t('greeting', { username: currentUser.username, role: currentUser.role }); 
       show(who); 
     }
     hide(qs('#btn-open-login')); 
@@ -4304,7 +4508,9 @@ function reflectAuth(){
 
   try { ensureMapLegend(map); } catch (e) {}
 }
+
 const SUP_MODE_KEY = 'sup_mode';
+
 function setSupervisorMode(mode) {
   const body = document.body;
   const adminCard = qs('#admin-card');
@@ -4315,7 +4521,7 @@ function setSupervisorMode(mode) {
   const submit = qs('#submit-btn');
   if (submit) {
     submit.disabled = true;
-    submit.title = 'Supervisor cannot add';
+    submit.title = t('supervisorCannotAdd');
   }
 
   try { map?.off('click'); } catch (e) {}
@@ -4387,6 +4593,7 @@ function setSupervisorMode(mode) {
         ensureEventsExportControl(); 
         syncEventsMapWithFilteredEvents(); 
       } catch(e) {
+        console.warn('[setSupervisorMode] Map update error:', e);
       }
     }, 100);
     
@@ -4412,7 +4619,7 @@ function setSupervisorMode(mode) {
           
           ensureMapLegend(map);
         }
-      } catch(e) { console.warn('Map resize hatası:', e); }
+      } catch(e) { console.warn('Map resize error:', e); }
     }, 300);
 
     try { loadExistingEvents({ publicMode: false }); } catch (e) {}
@@ -4424,12 +4631,14 @@ function setSupervisorMode(mode) {
   try { 
     ensureMapLegend(map); 
   } catch(e) {
+    console.warn('[setSupervisorMode] Legend update error:', e);
   }
 
   try { localStorage.setItem(SUP_MODE_KEY, mode); } catch (e) {}
   qs('#sup-btn-form')?.setAttribute('aria-pressed', String(mode === 'form'));
   qs('#sup-btn-admin')?.setAttribute('aria-pressed', String(mode !== 'form'));
 }
+
 function ensureSupervisorToggle(){
   if (qs('#sup-panel-toggle')) return;
   const host = qs('.auth') || qs('header .wrap') || document.body;
@@ -4439,8 +4648,8 @@ function ensureSupervisorToggle(){
   box.style.gap = '6px';
   box.style.alignItems = 'center';
   box.innerHTML = `
-    <button id="sup-btn-form" class="btn ghost" type="button" title="Olay Görünümü">Görünüm</button>
-    <button id="sup-btn-admin" class="btn ghost" type="button" title="Yönetim Paneli">Yönetim</button>
+    <button id="sup-btn-form" class="btn ghost" type="button" title="${t('eventView')}">${t('view')}</button>
+    <button id="sup-btn-admin" class="btn ghost" type="button" title="${t('managementPanel')}">${t('management')}</button>
   `;
   host.appendChild(box);
   const saved = (localStorage.getItem(SUP_MODE_KEY) || 'admin');
@@ -4484,6 +4693,7 @@ async function checkMe(){
     try { ensureMapLegend(map); } catch {}
   } else { 
     markersLayer.clearLayers(); 
+    
     try { ensureMapLegend(map); } catch {}
   }
 }
@@ -4493,7 +4703,7 @@ async function login(){
   const usernameOrEmail = qs('#login-user')?.value.trim();
   const password = qs('#login-pass')?.value;
   const totp = (qs('#login-totp')?.value.trim() || undefined);
-  if (!usernameOrEmail || !password) return setError(qs('#login-error'), 'Username and password are required.');
+  if (!usernameOrEmail || !password) return setError(qs('#login-error'), t('usernamePasswordRequired'));
 
   const btn = qs('#btn-login'); 
   if (btn) btn.disabled = true;
@@ -4508,9 +4718,9 @@ async function login(){
     if (!r.ok) {
       if (data.error === 'totp_gerekli') {
         show(qs('#totp-block'));
-        setError(qs('#login-error'), 'Please enter the verification code.');
+        setError(qs('#login-error'), t('pleaseEnterVerificationCode'));
       } else {
-        setError(qs('#login-error'), data.message || data.error || 'Login failed.');
+        setError(qs('#login-error'), data.message || data.error || t('loginFailed'));
       }
       return;
     }
@@ -4527,9 +4737,9 @@ async function login(){
     const mapEl = document.getElementById('map');
     if (mapEl) mapEl.classList.remove('blur-background');
     
-    toast('Login successful', 'success');
+    toast(t('loginSuccessful'), 'success');
   } catch(e) {
-    setError(qs('#login-error'), 'Login error: ' + e.message);
+    setError(qs('#login-error'), t('loginError') + ': ' + e.message);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -4544,9 +4754,9 @@ async function register(){
   const surname = qs('#reg-surname')?.value.trim() || undefined;
 
   if (!username || !email || !password) 
-    return setError(qs('#register-error'), 'Username, email and password are required.');
+    return setError(qs('#register-error'), t('usernameEmailPasswordRequired'));
   if (!isStrongPassword(password)) 
-    return setError(qs('#register-error'), 'Weak password: Must contain at least 8 characters, one uppercase letter, one lowercase letter, and one symbol.');
+    return setError(qs('#register-error'), t('weakPassword'));
 
   const btn = qs('#btn-register'); 
   if (btn) btn.disabled = true;
@@ -4559,16 +4769,16 @@ async function register(){
     const data = await r.json().catch(() => ({}));
 
     if (!r.ok) {
-      setError(qs('#register-error'), data.message || data.error || 'Registration failed.');
+      setError(qs('#register-error'), data.message || data.error || t('registrationFailed'));
       return;
     }
 
-    alert('Registration successful! Please check your email (for verification if applicable).');
+    alert(t('registrationSuccessfulCheckEmail'));
     resetRegisterForm();
     hide(qs('#register-card')); 
     show(qs('#login-card'));
   } catch(e) {
-    setError(qs('#register-error'), 'Registration error: ' + e.message);
+    setError(qs('#register-error'), t('registrationError') + ': ' + e.message);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -4595,19 +4805,21 @@ async function logout(){
   try { markersLayer.clearLayers(); } catch {}
   resetEdit();
   detachMapClickForLoggedOut();
+  
+  const currentLang = window.getLanguage();
+  
   goDefaultScreen();
-
+  
   const showGood = boolFromConfigValue(APP_CONFIG.showGoodEventsOnLogin);
   const showBad = boolFromConfigValue(APP_CONFIG.showBadEventsOnLogin);
   const showAny = showGood || showBad;
-  
   
   if (showAny) {
     try {
       await loadExistingEvents({ publicMode: true });
       ensureMapLegend(map);
     } catch(e){
-      console.warn('logout->public Failed to load event:', e);
+      console.warn('logout->public event load failed:', e);
     }
   } else {
     try { markersLayer?.clearLayers(); } catch {}
@@ -4626,29 +4838,10 @@ async function logout(){
       map.invalidateSize();
     }
   } catch(e) {
-    console.warn('Unable to reload map:', e);
+    console.warn('Map could not be reloaded:', e);
   }
 }
 
-qs('#btn-login')?.addEventListener('click', login);
-qs('#btn-register')?.addEventListener('click', register);
-qs('#btn-logout')?.addEventListener('click', logout);
-
-qs('#btn-open-login')?.addEventListener('click', () => {
-  hide(qs('#register-card'));
-  hide(qs('#forgot-card'));
-  hide(qs('#olay-card'));
-  show(qs('#login-card'));
-
-  pushOverlayState('login-card');
-
-  ensureAuthBackButton('#login-card');
-
-  const mapEl = document.getElementById('map');
-  if (mapEl) mapEl.classList.add('blur-background');
-
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-});
 function ensureAuthBackButton(cardSelector){
   const card = qs(cardSelector);
   if (!card) return;
@@ -4663,8 +4856,8 @@ function ensureAuthBackButton(cardSelector){
 
   const headerBackBtn = document.createElement('button');
   headerBackBtn.className = 'btn primary icon-btn header-back-btn';
-  headerBackBtn.innerHTML = '<img src="/back.svg" alt="Geri" width="20" height="20" loading="lazy" />';
-  headerBackBtn.title = 'Geri';
+  headerBackBtn.innerHTML = '<img src="/back.svg" alt="' + t('back') + '" width="20" height="20" loading="lazy" />';
+  headerBackBtn.title = t('back');
   headerBackBtn.onclick = () => {
     restoreMapViewFromOverlay();
 
@@ -4676,6 +4869,7 @@ function ensureAuthBackButton(cardSelector){
   const wrap = header.querySelector('.wrap') || header;
   wrap.insertBefore(headerBackBtn, wrap.firstChild);
 }
+
 function ensureBackButton(){
   const olayCard = qs('#olay-card');
   if (!olayCard) return;
@@ -4700,12 +4894,10 @@ function ensureBackButton(){
   const backBtn = document.createElement('button');
   backBtn.type = 'button';
   backBtn.className = 'btn primary icon-btn card-back-btn';
-  backBtn.innerHTML = '<img src="/back.svg" alt="Geri" width="20" height="20" loading="lazy" />';
-  backBtn.title = 'Geri';
+  backBtn.innerHTML = '<img src="/back.svg" alt="' + t('back') + '" width="20" height="20" loading="lazy" />';
+  backBtn.title = t('back');
   backBtn.style.cssText = 'flex-shrink: 0;';
   backBtn.onclick = () => {
-    console.log('[BACK BTN] Tıklandı');
-    
     const mapEl = document.getElementById('map');
     if (mapEl) {
       mapEl.classList.remove('blur-background');
@@ -4720,11 +4912,13 @@ function ensureBackButton(){
     try { 
       history.back(); 
     } catch(e) {
+      console.warn('[BACK BTN] history.back() error:', e);
     }
   };
   
   titleWrapper.insertBefore(backBtn, formTitle);
 }
+
 qs('#goto-forgot')?.addEventListener('click', (e) => {
   e.preventDefault();
   resetLoginForm();
@@ -4745,7 +4939,6 @@ qs('#toggle-login')?.addEventListener('click', (e) => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
-
 qs('#back-to-login')?.addEventListener('click', (e) => {
   e.preventDefault();
   resetForgotForm();
@@ -4759,7 +4952,7 @@ qs('#back-to-login')?.addEventListener('click', (e) => {
 qs('#btn-forgot-start')?.addEventListener('click', async () => {
   clearError(qs('#forgot-error'));
   const email = qs('#fg-email')?.value.trim();
-  if (!email) return setError(qs('#forgot-error'), 'Email is required.');
+  if (!email) return setError(qs('#forgot-error'), t('emailRequired'));
 
   const btn = qs('#btn-forgot-start'); 
   if (btn) btn.disabled = true;
@@ -4772,14 +4965,14 @@ qs('#btn-forgot-start')?.addEventListener('click', async () => {
     const data = await r.json().catch(() => ({}));
 
     if (!r.ok) {
-      setError(qs('#forgot-error'), data.message || data.error || 'Code could not be sent.');
+      setError(qs('#forgot-error'), data.message || data.error || t('codeNotSent'));
       return;
     }
 
-    toast('Verification code has been sent to your email (valid for 5 minutes)', 'success');
+    toast(t('verificationCodeSent'), 'success');
     showForgotStep(2);
   } catch(e) {
-    setError(qs('#forgot-error'), 'Hata: ' + e.message);
+    setError(qs('#forgot-error'), t('error') + ': ' + e.message);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -4789,7 +4982,7 @@ qs('#btn-forgot-verify')?.addEventListener('click', async () => {
   clearError(qs('#forgot-error'));
   const email = qs('#fg-email')?.value.trim();
   const code = qs('#fg-code')?.value.trim();
-  if (!email || !code) return setError(qs('#forgot-error'), 'Email and code are required.');
+  if (!email || !code) return setError(qs('#forgot-error'), t('emailCodeRequired'));
 
   const btn = qs('#btn-forgot-verify'); 
   if (btn) btn.disabled = true;
@@ -4802,14 +4995,14 @@ qs('#btn-forgot-verify')?.addEventListener('click', async () => {
     const data = await r.json().catch(() => ({}));
 
     if (!r.ok) {
-      setError(qs('#forgot-error'), data.message || data.error || 'Code could not be verified.');
+      setError(qs('#forgot-error'), data.message || data.error || t('codeNotVerified'));
       return;
     }
 
-    toast('Code verified, enter your new password', 'success');
+    toast(t('codeVerifiedEnterNewPassword'), 'success');
     showForgotStep(3);
   } catch(e) {
-    setError(qs('#forgot-error'), 'Hata: ' + e.message);
+    setError(qs('#forgot-error'), t('error') + ': ' + e.message);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -4823,11 +5016,11 @@ qs('#btn-forgot-reset')?.addEventListener('click', async () => {
   const newPw2 = qs('#fg-pass2')?.value;
 
   if (!email || !code || !newPw || !newPw2) 
-    return setError(qs('#forgot-error'), 'Fill in all fields.');
+    return setError(qs('#forgot-error'), t('fillAllFields'));
   if (newPw !== newPw2) 
-    return setError(qs('#forgot-error'), 'Passwords do not match.');
+    return setError(qs('#forgot-error'), t('passwordsDoNotMatch'));
   if (!isStrongPassword(newPw)) 
-    return setError(qs('#forgot-error'), 'Weak password: Must contain at least 8 characters, one uppercase letter, one lowercase letter, and one symbol.');
+    return setError(qs('#forgot-error'), t('weakPassword'));
 
   const btn = qs('#btn-forgot-reset'); 
   if (btn) btn.disabled = true;
@@ -4840,17 +5033,17 @@ qs('#btn-forgot-reset')?.addEventListener('click', async () => {
     const data = await r.json().catch(() => ({}));
 
     if (!r.ok) {
-      setError(qs('#forgot-error'), data.message || data.error || 'Password reset failed.');
+      setError(qs('#forgot-error'), data.message || data.error || t('passwordNotReset'));
       return;
     }
 
-    alert('Your password has been reset! You can log in.');
+    alert(t('passwordResetSuccessCanLogin'));
     resetForgotForm();
     hide(qs('#forgot-card')); 
     show(qs('#login-card'));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch(e) {
-    setError(qs('#forgot-error'), 'Mistake: ' + e.message);
+    setError(qs('#forgot-error'), t('error') + ': ' + e.message);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -4871,37 +5064,34 @@ qs('#toggle-register')?.addEventListener('click', (e) => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
-
-
-
-
 function setupSpeechToText() {
-  if (currentUser && currentUser.role === 'user') {
-    qsa('#btn-stt, .media-mic, .mic-inline').forEach(el => el.remove());
-    return;
-  }
-  
-  const ac = qs('#explanation');
+  const ac = qs('#aciklama');
   if (!ac) return;
 
   qsa('#btn-stt, .media-mic, .mic-inline').forEach(el => el.remove());
 
-  const aciklamaLabel = Array.from(document.querySelectorAll('label')).find(l => l.textContent.includes('Explanation'));
+  const aciklamaLabel = Array.from(document.querySelectorAll('label')).find(l => 
+    l.getAttribute('for') === 'aciklama'
+  );
   if (!aciklamaLabel) return;
 
+  const labelText = aciklamaLabel.childNodes[0];
+  
   const mic = document.createElement('button');
   mic.id = 'btn-stt';
   mic.type = 'button';
-  mic.className = 'icon-btn stt-btn';
-  mic.title = 'write by voice';
-  mic.setAttribute('aria-label', 'write by voice');
-  mic.innerHTML = `<img src="/mic.svg" alt="Mikrofon" width="20" height="20" loading="lazy" />`;
+  mic.className = 'btn ghost icon-btn stt-btn';
+  mic.title = t('voiceToText');
+  mic.setAttribute('aria-label', t('voiceToText'));
+  mic.innerHTML = `<img src="/mic.svg" alt="${t('microphone')}" width="20" height="20" loading="lazy" />`;
   mic.style.cssText = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
     margin-left: 8px;
     vertical-align: middle;
+    min-width: 36px;
+    min-height: 36px;
   `;
   
   aciklamaLabel.appendChild(mic);
@@ -4909,7 +5099,7 @@ function setupSpeechToText() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     mic.disabled = true;
-    mic.title = 'Browser does not recognize speech';
+    mic.title = t('browserNoSpeechRecognition');
     return;
   }
 
@@ -4930,7 +5120,7 @@ function setupSpeechToText() {
   }
   function setMicOff(){
     mic.classList.remove('danger','listening','mic-blink');
-    mic.innerHTML = `<img src="/mic.svg" alt="Mikrofon" width="20" height="20" loading="lazy" />`;
+    mic.innerHTML = `<img src="/mic.svg" alt="${t('microphone')}" width="20" height="20" loading="lazy" />`;
   }
 
   rec.onresult = (e) => {
@@ -4981,7 +5171,6 @@ function setupSpeechToText() {
   };
 }
 
-
 (function hideLatLngAndFreezeTextarea(){
   const lat = qs('#lat'); const lng = qs('#lng');
   if (lat) lat.closest('.row')?.classList.add('hidden');
@@ -4995,10 +5184,8 @@ function attachMapClickForLoggedIn(){
   try { map?.off('click'); } catch {}
   if (!map) return;
   
-  
   map.on('click', (e) => {
     stopLiveLocation(); 
-    
     
     if (!allowBlackMarker()) {
       return;
@@ -5018,9 +5205,8 @@ function attachMapClickForLoggedIn(){
     } else {
       clickMarker = L.marker([lat, lng], { icon: BLACK_PIN() })
         .addTo(map)
-        .bindPopup('Selected position');
+        .bindPopup(t('selectedLocation'));
     }
-    
     
     if (currentUser && currentUser.role === 'user') {
       const olayCard = qs('#olay-card');
@@ -5039,6 +5225,7 @@ function attachMapClickForLoggedIn(){
     }
   });
 }
+
 function detachMapClickForLoggedOut(){
   try { map?.off('click'); } catch {}
   if (clickMarker){ try { map.removeLayer(clickMarker); } catch{}; clickMarker = null; }
@@ -5046,20 +5233,24 @@ function detachMapClickForLoggedOut(){
   if (liveAccuracyCircle){ try { map.removeLayer(liveAccuracyCircle); } catch{}; liveAccuracyCircle = null; }
 }
 
-/* ==================== BAŞLANGIÇ ==================== */
+/* ==================== INITIALIZATION ==================== */
 (async function init(){
+  if (typeof window.t !== 'function') {
+    console.error('i18n not loaded!');
+    return;
+  }
+  
   (function addHeaderLocationBtn(){
     const header = document.querySelector('header .wrap') || document.querySelector('header');
     if (!header) return;
-
     const existing = qs('#btn-use-location');
     if (existing) existing.remove();
     
     const btn = document.createElement('button');
     btn.id = 'btn-use-location';
     btn.className = 'btn ghost icon-btn';
-    btn.innerHTML = `<img src="/useposition.svg" alt="Position" width="20" height="20" />`;
-    btn.title = 'Use My Position';
+    btn.innerHTML = `<img src="/useposition.svg" alt="${t('location')}" width="20" height="20" />`;
+    btn.title = t('useMyLocation');
     btn.style.display = 'none';
     btn.onclick = () => {
       geoFindMeToggle();
@@ -5090,7 +5281,6 @@ function detachMapClickForLoggedOut(){
   loadToken();
   applySavedTheme();
   
-  
   await applySiteConfig();
   wireEyes();
   setMediaButtonsAsIcons();
@@ -5114,6 +5304,7 @@ function detachMapClickForLoggedOut(){
     try { map.setMinZoom(minZ); } catch {}
     try { map.setView([lat, lng], z, { animate:false }); } catch {}
   } catch(e){
+    console.warn('[MAP INIT] .env/config values could not be applied:', e);
   }
 
   if (FORCE_DEFAULT_LOGIN_ON_LOAD) {
@@ -5126,7 +5317,6 @@ function detachMapClickForLoggedOut(){
   const showGood = boolFromConfigValue(APP_CONFIG.showGoodEventsOnLogin);
   const showBad = boolFromConfigValue(APP_CONFIG.showBadEventsOnLogin);
   const showAny = showGood || showBad;
-  
   
   if (!currentUser) {
     await goToDefaultLoginScreen();
@@ -5143,10 +5333,12 @@ function detachMapClickForLoggedOut(){
               map.fitBounds(group.getBounds().pad(0.15));
             }
           } catch(e) {
+            console.warn('Map fit error:', e);
           }
         }
       } 
-      catch(e){  
+      catch(e){ 
+        console.error('Public event load ERROR:', e); 
       }
     } else {
       try { if (markersLayer) markersLayer.clearLayers(); } catch {}
@@ -5172,9 +5364,391 @@ function detachMapClickForLoggedOut(){
         ensureEventsExportControl();
         syncEventsMapWithFilteredEvents();
       } catch(e) {
+        console.warn('[INIT] Admin map error:', e);
       }
     }, 500);
     
     try { ensureMapLegend(map); } catch {}
   }
-})()
+})();
+
+
+async function changeLanguage(lang) {
+  if (typeof window.setLanguage === 'function') {
+    window.setLanguage(lang);
+    
+    if (typeof window.loadTranslations === 'function') {
+      await window.loadTranslations(lang);
+    }
+    
+    await updateUIWithNewLanguage();
+    
+    document.querySelectorAll('.language-selector button').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    const activeLangBtn = document.getElementById('lang-' + lang);
+    if (activeLangBtn) {
+      activeLangBtn.classList.add('active');
+    }
+    
+    toast(t('languageChanged'), 'success');
+  }
+}
+
+async function updateUIWithNewLanguage() {
+  const siteTitle = document.getElementById('site-title');
+  if (siteTitle && APP_CONFIG.siteTitle) {
+    siteTitle.textContent = APP_CONFIG.siteTitle;
+  }
+  const btnOpenLogin = document.querySelector('#btn-open-login');
+  if (btnOpenLogin) btnOpenLogin.textContent = t('login');
+  
+  const btnLogout = document.querySelector('#btn-logout');
+  if (btnLogout) btnLogout.textContent = t('logout');
+  
+  const whoami = document.querySelector('#whoami');
+  if (whoami && currentUser) {
+    whoami.textContent = t('greeting', { username: currentUser.username, role: currentUser.role });
+  }
+  
+  const loginCard = document.querySelector('#login-card h2');
+  if (loginCard) loginCard.textContent = t('login');
+  
+  document.querySelectorAll('#login-card label').forEach(label => {
+    const forAttr = label.getAttribute('for');
+    if (forAttr === 'login-user') label.textContent = t('usernameOrEmail') + ':';
+    if (forAttr === 'login-pass') label.textContent = t('password') + ':';
+    if (forAttr === 'login-totp') label.textContent = t('verificationCode') + ':';
+  });
+  
+  const btnLogin = document.querySelector('#btn-login');
+  if (btnLogin) btnLogin.textContent = t('login');
+  
+  const toggleRegister = document.querySelector('#toggle-register');
+  if (toggleRegister) toggleRegister.textContent = t('dontHaveAccount');
+  
+  const gotoForgot = document.querySelector('#goto-forgot');
+  if (gotoForgot) gotoForgot.textContent = t('forgotPassword');
+
+  const registerCard = document.querySelector('#register-card h2');
+  if (registerCard) registerCard.textContent = t('register');
+  
+  document.querySelectorAll('#register-card label').forEach(label => {
+    const forAttr = label.getAttribute('for');
+    if (forAttr === 'reg-username') label.textContent = t('username') + ':';
+    if (forAttr === 'reg-email') label.textContent = t('email') + ':';
+    if (forAttr === 'reg-pass') label.textContent = t('password') + ':';
+    if (forAttr === 'reg-name') label.textContent = t('name') + ':';
+    if (forAttr === 'reg-surname') label.textContent = t('surname') + ':';
+  });
+  
+  const btnRegister = document.querySelector('#btn-register');
+  if (btnRegister) btnRegister.textContent = t('register');
+  
+  const toggleLogin = document.querySelector('#toggle-login');
+  if (toggleLogin) toggleLogin.textContent = t('alreadyHaveAccount');
+  
+  const forgotCard = document.querySelector('#forgot-card h2');
+  if (forgotCard) forgotCard.textContent = t('passwordReset');
+  
+  document.querySelectorAll('#forgot-card label').forEach(label => {
+    const forAttr = label.getAttribute('for');
+    if (forAttr === 'fg-email') label.textContent = t('email') + ':';
+    if (forAttr === 'fg-code') label.textContent = t('verificationCode') + ':';
+    if (forAttr === 'fg-pass1') label.textContent = t('newPassword') + ':';
+    if (forAttr === 'fg-pass2') label.textContent = t('confirmNewPassword') + ':';
+  });
+  
+  const btnForgotStart = document.querySelector('#btn-forgot-start');
+  if (btnForgotStart) btnForgotStart.textContent = t('sendCode');
+  
+  const btnForgotVerify = document.querySelector('#btn-forgot-verify');
+  if (btnForgotVerify) btnForgotVerify.textContent = t('verifyCode');
+  
+  const btnForgotReset = document.querySelector('#btn-forgot-reset');
+  if (btnForgotReset) btnForgotReset.textContent = t('resetPassword');
+  
+  const backToLogin = document.querySelector('#back-to-login');
+  if (backToLogin) backToLogin.textContent = t('backToLogin');
+  
+  const olayCard = document.querySelector('#olay-card h2');
+  if (olayCard) olayCard.textContent = t('addEvent');
+  
+  document.querySelectorAll('#olay-card label').forEach(label => {
+    const forAttr = label.getAttribute('for');
+    if (forAttr === 'olay_turu') {
+      const micBtn = label.querySelector('#btn-stt');
+      label.childNodes[0].textContent = t('eventType') + ':';
+      if (micBtn) label.appendChild(micBtn);
+    }
+    if (forAttr === 'aciklama') {
+      const micBtn = label.querySelector('#btn-stt');
+      label.childNodes[0].textContent = t('description') + ':';
+      if (micBtn) label.appendChild(micBtn);
+    }
+  });
+  setupSpeechToText();
+  
+  const submitBtn = document.querySelector('#submit-btn');
+  if (submitBtn) {
+    if (submitBtn.classList.contains('updating')) {
+      submitBtn.textContent = t('update');
+    } else {
+      submitBtn.textContent = t('submit');
+    }
+  }
+  
+  const cancelEditBtn = document.querySelector('#cancel-edit-btn');
+  if (cancelEditBtn) cancelEditBtn.textContent = t('cancel');
+  
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const tab = btn.getAttribute('data-tab');
+    if (tab === 'events-tab') btn.textContent = t('events');
+    if (tab === 'types-tab') btn.textContent = t('eventTypes');
+    if (tab === 'users-tab') btn.textContent = t('users');
+  });
+  
+  const eventsTabH2 = document.querySelector('#events-tab h2');
+  if (eventsTabH2) eventsTabH2.textContent = t('events');
+  
+  const typesTabH2 = document.querySelector('#types-tab h2');
+  if (typesTabH2) typesTabH2.textContent = t('eventTypes');
+  
+  const usersTabH2 = document.querySelector('#users-tab h2');
+  if (usersTabH2) usersTabH2.textContent = t('users');
+  
+  if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'supervisor')) {
+    updateTableHeaders();
+    
+    ['events', 'types', 'users'].forEach(tableKey => {
+      if (tableStates[tableKey]) {
+        renderTable(tableKey);
+        
+        setTimeout(() => {
+          attachFilterEvents(tableKey);
+          
+          Object.keys(tableStates[tableKey].filters).forEach(column => {
+            updateFilterIcon(tableKey, column);
+          });
+        }, 50);
+      }
+    });
+  }
+  
+  const supBtnForm = document.querySelector('#sup-btn-form');
+  if (supBtnForm) {
+    supBtnForm.textContent = t('view');
+    supBtnForm.title = t('eventView');
+  }
+  
+  const supBtnAdmin = document.querySelector('#sup-btn-admin');
+  if (supBtnAdmin) {
+    supBtnAdmin.textContent = t('management');
+    supBtnAdmin.title = t('managementPanel');
+  }
+  
+  const newTypeNameLabel = Array.from(document.querySelectorAll('label')).find(l => 
+    l.getAttribute('for') === 'new-type-name'
+  );
+  if (newTypeNameLabel) newTypeNameLabel.textContent = t('typeName') + ':';
+  
+  const btnAddType = document.querySelector('#btn-add-type');
+  if (btnAddType) btnAddType.textContent = t('add');
+  
+  setMediaButtonsAsIcons();
+
+  try {
+    if (map) {
+      const existingLegend = map.getContainer().querySelector('.map-legend');
+      if (existingLegend) existingLegend.remove();
+      ensureMapLegend(map);
+    }
+    if (eventsMap) {
+      const existingLegend = eventsMap.getContainer().querySelector('.map-legend');
+      if (existingLegend) existingLegend.remove();
+      ensureMapLegend(eventsMap);
+    }
+  } catch(e) {
+    console.warn('Map legend update error:', e);
+  }
+  const allowedDomainEl = qs('#allowed-domain');
+  if (allowedDomainEl && APP_CONFIG.allowedEmailDomains && APP_CONFIG.allowedEmailDomains.length) {
+    allowedDomainEl.textContent = APP_CONFIG.allowedEmailDomains.length === 1 
+      ? t('allowedDomainSingular', { domain: APP_CONFIG.allowedEmailDomains[0] })
+      : t('allowedDomainsPlural', { domains: APP_CONFIG.allowedEmailDomains.join(', ') });
+  }
+  
+  const totpLabel = Array.from(document.querySelectorAll('#login-card label')).find(l => 
+    l.getAttribute('for') === 'login-totp'
+  );
+  if (totpLabel) totpLabel.textContent = t('verificationCode') + ':';
+  
+  const olayTuruSelect = qs('#olay_turu');
+  if (olayTuruSelect && olayTuruSelect.options[0]) {
+    olayTuruSelect.options[0].text = `-- ${t('pleaseSelect')} --`;
+  }
+  if (map) {
+    map.eachLayer(layer => {
+      if (layer instanceof L.Marker && layer.getPopup && layer.getPopup()) {
+        const popup = layer.getPopup();
+        if (popup.isOpen()) {
+          eventIndex.forEach((evt) => {
+            const markerLatLng = layer.getLatLng();
+            const evtLat = parseFloat(evt.enlem);
+            const evtLng = parseFloat(evt.boylam);
+            
+            if (Math.abs(markerLatLng.lat - evtLat) < 0.0001 && 
+                Math.abs(markerLatLng.lng - evtLng) < 0.0001) {
+              recreatePopupContent(evt, layer);
+            }
+          });
+        }
+      }
+    });
+  }
+  
+  if (currentUser) {
+    await loadExistingEvents({ publicMode: false });
+    if (currentUser.role === 'admin' || currentUser.role === 'supervisor') {
+      await refreshAdminEvents();
+    }
+  } else {
+    const showGood = boolFromConfigValue(APP_CONFIG.showGoodEventsOnLogin);
+    const showBad = boolFromConfigValue(APP_CONFIG.showBadEventsOnLogin);
+    if (showGood || showBad) {
+      await loadExistingEvents({ publicMode: true });
+    }
+  }
+}
+function updateTableHeaders() {
+  
+  function rebuildHeader(header, newText, hasFilterIcon = true) {
+    if (!header) return;
+    let filterIcon = null;
+    let filterDropdown = null;
+    
+    const icon = header.querySelector('.filter-icon');
+    const dropdown = header.querySelector('.filter-dropdown');
+    
+    if (icon) {
+      filterIcon = icon.cloneNode(true); 
+    }
+    if (dropdown) {
+      filterDropdown = dropdown.cloneNode(true); 
+    }
+    header.innerHTML = '';
+    
+    const textContent = hasFilterIcon ? newText + ' ' : newText;
+    const textNode = document.createTextNode(textContent);
+    header.appendChild(textNode);
+    if (hasFilterIcon && filterIcon) {
+      header.appendChild(filterIcon);
+    }
+    if (filterDropdown) {
+      header.appendChild(filterDropdown);
+    }
+  }
+  
+  // Events Table
+  const eventHeaders = document.querySelector('#events-table thead tr');
+  if (eventHeaders) {
+    const headers = eventHeaders.querySelectorAll('th');
+    
+    rebuildHeader(headers[0], t('type'), true);           
+    rebuildHeader(headers[1], t('description'), false);   
+    rebuildHeader(headers[2], t('addedBy'), true);        
+    rebuildHeader(headers[3], t('photo'), true);          
+    rebuildHeader(headers[4], t('video'), true);          
+    rebuildHeader(headers[5], t('addedDate'), true);      
+    rebuildHeader(headers[6], t('actions'), false);       
+  }
+  
+  // Types Table
+  const typeHeaders = document.querySelector('#types-table thead tr');
+  if (typeHeaders) {
+    const headers = typeHeaders.querySelectorAll('th');
+    
+    rebuildHeader(headers[0], t('typeName'), true);       
+    rebuildHeader(headers[1], t('good'), true);           
+    rebuildHeader(headers[2], t('addedBy'), true);        
+    rebuildHeader(headers[3], t('actions'), false);       
+  }
+  
+  // Users Table
+  const userHeaders = document.querySelector('#users-table thead tr');
+  if (userHeaders) {
+    const headers = userHeaders.querySelectorAll('th');
+    
+    rebuildHeader(headers[0], t('username'), true);       
+    rebuildHeader(headers[1], t('role'), true);           
+    rebuildHeader(headers[2], t('email'), true);          
+    rebuildHeader(headers[3], t('verified'), true);      
+    rebuildHeader(headers[4], t('actions'), false);       
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const btnLogin = qs('#btn-login');
+  const btnRegister = qs('#btn-register');
+  const btnLogout = qs('#btn-logout');
+  const btnOpenLogin = qs('#btn-open-login');
+  
+  if (btnLogin) {
+    btnLogin.addEventListener('click', login);
+  }
+  
+  if (btnRegister) {
+    btnRegister.addEventListener('click', register);
+  }
+  
+  if (btnLogout) {
+    btnLogout.addEventListener('click', logout);
+  }
+  
+  if (btnOpenLogin) {
+    btnOpenLogin.addEventListener('click', () => {
+      hide(qs('#register-card'));
+      hide(qs('#forgot-card'));
+      hide(qs('#olay-card'));
+      show(qs('#login-card'));
+      
+      pushOverlayState('login-card');
+      
+      ensureAuthBackButton('#login-card');
+      
+      const mapEl = document.getElementById('map');
+      if (mapEl) mapEl.classList.add('blur-background');
+      
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
+  
+  const langTr = document.getElementById('lang-tr');
+  const langEn = document.getElementById('lang-en');
+  
+  if (langTr) {
+    langTr.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await changeLanguage('tr');
+    });
+  }
+  
+  if (langEn) {
+    langEn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await changeLanguage('en');
+    });
+  }
+
+  if (typeof window.getLanguage === 'function') {
+    const currentLang = window.getLanguage();
+    document.querySelectorAll('.language-selector button').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    const activeLangBtn = document.getElementById('lang-' + currentLang);
+    if (activeLangBtn) {
+      activeLangBtn.classList.add('active');
+    }
+  }
+}); 
