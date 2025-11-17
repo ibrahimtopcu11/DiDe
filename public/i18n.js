@@ -357,6 +357,7 @@ const translations = {
     mine: 'Mine',
     other: 'Other',
     addedBy: 'Added By',
+    addedDate: 'Date Added',
     dateAdded: 'Date Added',
     available: 'Available',
     notAvailable: 'Not Available',
