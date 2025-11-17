@@ -1,8 +1,5 @@
-
-
 const translations = {
   tr: {
-    // Common
     application: 'Uygulama',
     close: 'Kapat',
     back: 'Geri',
@@ -18,11 +15,9 @@ const translations = {
     error: 'Hata',
     success: 'Başarılı',
     
-    // Site Config
     allowedDomainSingular: 'Kayıt için izin verilen alan: {{domain}}',
     allowedDomainsPlural: 'Kayıt için izin verilen alanlar: {{domains}}',
     
-    // Media
     addPhoto: 'Fotoğraf Ekle',
     addVideo: 'Video Ekle',
     photo: 'Fotoğraf',
@@ -44,7 +39,6 @@ const translations = {
     photoRemoved: 'Fotoğraf kaldırıldı',
     videoRemoved: 'Video kaldırıldı',
     
-    // Location
     location: 'Konum',
     useMyLocation: 'Konumumu Kullan',
     cancelLocation: 'Konumu İptal Et',
@@ -52,7 +46,6 @@ const translations = {
     selectedLocation: 'Seçili konum',
     stopTracking: 'Takibi Durdur',
     
-    // Map Legend
     eventIcons: 'Olay İkonları',
     myEvent: 'Benim Olayım',
     otherEvents: 'Diğer Olaylar',
@@ -60,7 +53,6 @@ const translations = {
     withVideo: 'Videolu',
     withPhotoAndVideo: 'Foto + Video',
     
-    // Event Form
     eventReportForm: 'Olay Bildirimi Formu',
     eventType: 'Olay Türü',
     description: 'Açıklama',
@@ -73,7 +65,6 @@ const translations = {
     name: 'Ad',
     surname: 'Soyad',
     
-    // Event Types
     type: 'Tür',
     typeName: 'Tür Adı',
     good: 'Faydalı mı?',
@@ -89,14 +80,12 @@ const translations = {
     createdBy: 'Oluşturan',
     actions: 'İşlemler',
     
-    // Users
     users: 'Kullanıcılar',
     username: 'Kullanıcı Adı',
     email: 'E-posta',
     role: 'Rol',
     verified: 'Doğrulandı',
     
-    // Events
     events: 'Olaylar',
     addEvent: 'Olay Ekle',
     eventID: 'Olay ID',
@@ -108,7 +97,6 @@ const translations = {
     available: 'Var',
     notAvailable: 'Yok',
     
-    // Auth
     login: 'Giriş',
     logout: 'Çıkış',
     signUp: 'Kayıt Ol',
@@ -131,14 +119,12 @@ const translations = {
     confirmNewPassword: 'Yeni Parolayı Onayla',
     backToLogin: 'Giriş Ekranına Dön',
     
-    // Admin Panel
     administrationPanel: 'Yönetim Paneli',
     managementPanel: 'Yönetim Paneli',
     view: 'Görünüm',
     management: 'Yönetim',
     eventView: 'Olay Görünümü',
     
-    // Filters
     searchPlaceholder: 'Ara: Mayıs, 2025, 14 Mayıs 2025, 01:00...',
     searchCommonWord: 'Ara: ortak kelime...',
     newestFirst: 'En Son Eklenen Başta',
@@ -146,7 +132,6 @@ const translations = {
     customFilters: 'Özel Filtreler',
     emailDomains: 'E-posta Domain\'leri',
     
-    // Date Filters
     yearFilter: '{{year}} Yılı',
     monthFilter: '{{month}} Ayı',
     dayFilter: '{{day}}. Gün',
@@ -154,16 +139,13 @@ const translations = {
     dayRangeFilter: '{{start}} - {{end}}. Günler Arası',
     timeRangeFilter: '{{start}} - {{end}} Arası',
     
-    // Months
     months: ['ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran', 'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'],
     
-    // Pagination
     showingTotalRecords: 'Toplam {{total}} kayıt gösteriliyor',
     showingFilteredRecords: 'Toplam {{total}} kayıttan {{filtered}} kayıt gösteriliyor',
     showingRangeRecords: '{{start}}-{{end}} arası gösteriliyor (Toplam: {{total}})',
     showingRangeFilteredRecords: '{{start}}-{{end}} arası gösteriliyor (Toplam {{total}} kayıttan {{filtered}} kayıt)',
     
-    // Messages
     noRecordsFound: 'Kayıt bulunamadı',
     noEventsToDownload: 'İndirilecek olay yok',
     eventsDownloaded: 'Olaylar indirildi',
@@ -174,7 +156,6 @@ const translations = {
     downloadFilteredEventsGeoJSON: 'Filtrelenmiş olayları GeoJSON olarak indir',
     downloadVisibleEventsGeoJSON: 'Haritada görünen olayları GeoJSON indir',
     
-    // Validation
     pleaseEnterTypeName: 'Lütfen tür adı girin',
     pleaseEnterLocation: 'Lütfen konum girin',
     pleaseSelectEventType: 'Lütfen bir olay türü seçin',
@@ -189,7 +170,6 @@ const translations = {
     noChanges: 'Değişiklik yapılmadı',
     noPermission: 'Yetkiniz yok',
     
-    // Success Messages
     loginSuccessful: 'Giriş başarılı',
     registrationSuccessfulCheckEmail: 'Kayıt başarılı! Lütfen e-postanızı kontrol edin (varsa doğrulama için)',
     verificationCodeSent: 'Doğrulama kodu e-postanıza gönderildi (5 dk geçerli)',
@@ -204,7 +184,6 @@ const translations = {
     eventDeleted: 'Olay silindi',
     videoAdded: 'Video eklendi',
     
-    // Error Messages
     unknownError: 'Bilinmeyen hata',
     loginFailed: 'Giriş başarısız',
     loginError: 'Giriş hatası',
@@ -228,14 +207,12 @@ const translations = {
     videoUploadError: 'Video yükleme hatası',
     invalidResponse: 'Geçersiz yanıt',
     
-    // Confirmations
     confirmDeleteEvent: 'Olay silinsin mi?',
     confirmDeleteType: 'Bu tür ve bağlı olaylar silinsin mi?',
     confirmDeleteUser: 'Kullanıcı silinsin mi?',
     confirmDeleteOwnAccount: 'Kendi hesabınızı silmek istediğinize emin misiniz?',
     accountDeactivatedRedirect: 'Hesabınız pasifleştirildi. Giriş ekranına yönlendiriliyorsunuz.',
     
-    // Camera/Recording
     cameraPermissionDenied: 'Kamera izni reddedildi veya bulunamadı. Galeriden seçebilirsiniz.',
     cameraNotOpened: 'Kamera açılmadı',
     videoRecordingNotSupported: 'Cihaz video kaydı desteklemiyor. Galeriden video seçin',
@@ -243,20 +220,16 @@ const translations = {
     videoRecordingError: 'Video kaydında hata',
     recordingNotCreated: 'Kayıt oluşmadı, tekrar deneyin',
     
-    // Speech Recognition
     voiceToText: 'Sesle yaz',
     microphone: 'Mikrofon',
     browserNoSpeechRecognition: 'Tarayıcı konuşma tanımıyor',
     
-    // Supervisor
     supervisorCannotAdd: 'Supervisor ekleyemez',
     
-    // Other
     pleaseEnterVerificationCode: 'Lütfen doğrulama kodunu girin'
   },
   
   en: {
-    // Common
     application: 'Application',
     close: 'Close',
     back: 'Back',
@@ -272,11 +245,9 @@ const translations = {
     error: 'Error',
     success: 'Success',
     
-    // Site Config
     allowedDomainSingular: 'Allowed domain for registration: {{domain}}',
     allowedDomainsPlural: 'Allowed domains for registration: {{domains}}',
     
-    // Media
     addPhoto: 'Add Photo',
     addVideo: 'Add Video',
     photo: 'Photo',
@@ -298,7 +269,6 @@ const translations = {
     photoRemoved: 'Photo removed',
     videoRemoved: 'Video removed',
     
-    // Location
     location: 'Location',
     useMyLocation: 'Use My Location',
     cancelLocation: 'Cancel Location',
@@ -306,7 +276,6 @@ const translations = {
     selectedLocation: 'Selected location',
     stopTracking: 'Stop Tracking',
     
-    // Map Legend
     eventIcons: 'Event Icons',
     myEvent: 'My Event',
     otherEvents: 'Other Events',
@@ -314,7 +283,6 @@ const translations = {
     withVideo: 'With Video',
     withPhotoAndVideo: 'Photo + Video',
     
-    // Event Form
     eventReportForm: 'Event Report Form',
     eventType: 'Event Type',
     description: 'Description',
@@ -327,7 +295,6 @@ const translations = {
     name: 'Name',
     surname: 'Surname',
     
-    // Event Types
     type: 'Type',
     good: 'Is it beneficial?',
     typeName: 'Type Name',
@@ -343,14 +310,12 @@ const translations = {
     createdBy: 'Created By',
     actions: 'Actions',
     
-    // Users
     users: 'Users',
     username: 'Username',
     email: 'Email',
     role: 'Role',
     verified: 'Verified',
     
-    // Events
     events: 'Events',
     addEvent: 'Add Event',
     eventID: 'Event ID',
@@ -362,7 +327,6 @@ const translations = {
     available: 'Available',
     notAvailable: 'Not Available',
     
-    // Auth
     login: 'Login',
     logout: 'Logout',
     signUp: 'Sign Up',
@@ -385,14 +349,12 @@ const translations = {
     confirmNewPassword: 'Confirm New Password',
     backToLogin: 'Back to Login',
     
-    // Admin Panel
     administrationPanel: 'Administration Panel',
     managementPanel: 'Management Panel',
     view: 'View',
     management: 'Management',
     eventView: 'Event View',
     
-    // Filters
     searchPlaceholder: 'Search: May, 2025, May 14 2025, 01:00...',
     searchCommonWord: 'Search: common word...',
     newestFirst: 'Newest First',
@@ -400,7 +362,6 @@ const translations = {
     customFilters: 'Custom Filters',
     emailDomains: 'Email Domains',
     
-    // Date Filters
     yearFilter: 'Year {{year}}',
     monthFilter: '{{month}} Month',
     dayFilter: 'Day {{day}}',
@@ -408,16 +369,13 @@ const translations = {
     dayRangeFilter: 'Days {{start}} - {{end}}',
     timeRangeFilter: '{{start}} - {{end}}',
     
-    // Months
     months: ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'],
     
-    // Pagination
     showingTotalRecords: 'Showing {{total}} total records',
     showingFilteredRecords: 'Showing {{filtered}} of {{total}} total records',
     showingRangeRecords: 'Showing {{start}}-{{end}} (Total: {{total}})',
     showingRangeFilteredRecords: 'Showing {{start}}-{{end}} ({{filtered}} of {{total}} total records)',
     
-    // Messages
     noRecordsFound: 'No records found',
     noEventsToDownload: 'No events to download',
     eventsDownloaded: 'Events downloaded',
@@ -428,7 +386,6 @@ const translations = {
     downloadFilteredEventsGeoJSON: 'Download filtered events as GeoJSON',
     downloadVisibleEventsGeoJSON: 'Download visible events on map as GeoJSON',
     
-    // Validation
     pleaseEnterTypeName: 'Please enter type name',
     pleaseEnterLocation: 'Please enter location',
     pleaseSelectEventType: 'Please select an event type',
@@ -443,7 +400,6 @@ const translations = {
     noChanges: 'No changes made',
     noPermission: 'No permission',
     
-    // Success Messages
     loginSuccessful: 'Login successful',
     registrationSuccessfulCheckEmail: 'Registration successful! Please check your email (if verification is required)',
     verificationCodeSent: 'Verification code sent to your email (valid for 5 minutes)',
@@ -458,7 +414,6 @@ const translations = {
     eventDeleted: 'Event deleted',
     videoAdded: 'Video added',
     
-    // Error Messages
     unknownError: 'Unknown error',
     loginFailed: 'Login failed',
     loginError: 'Login error',
@@ -482,14 +437,12 @@ const translations = {
     videoUploadError: 'Video upload error',
     invalidResponse: 'Invalid response',
     
-    // Confirmations
     confirmDeleteEvent: 'Delete event?',
     confirmDeleteType: 'Delete this type and related events?',
     confirmDeleteUser: 'Delete user?',
     confirmDeleteOwnAccount: 'Are you sure you want to delete your own account?',
     accountDeactivatedRedirect: 'Your account has been deactivated. Redirecting to login screen.',
     
-    // Camera/Recording
     cameraPermissionDenied: 'Camera permission denied or not found. You can select from gallery.',
     cameraNotOpened: 'Camera not opened',
     videoRecordingNotSupported: 'Device does not support video recording. Select video from gallery',
@@ -497,23 +450,18 @@ const translations = {
     videoRecordingError: 'Video recording error',
     recordingNotCreated: 'Recording not created, try again',
     
-    // Speech Recognition
     voiceToText: 'Voice to Text',
     microphone: 'Microphone',
     browserNoSpeechRecognition: 'Browser does not support speech recognition',
     
-    // Supervisor
     supervisorCannotAdd: 'Supervisor cannot add',
     
-    // Other
     pleaseEnterVerificationCode: 'Please enter verification code'
   }
 };
 
-// Default language
 let currentLanguage = 'tr';
 
-// Helper function for template replacement
 function replacePlaceholders(str, params) {
   if (!params) return str;
   return str.replace(/\{\{(\w+)\}\}/g, (match, key) => {
@@ -521,7 +469,6 @@ function replacePlaceholders(str, params) {
   });
 }
 
-// Translation function
 function t(key, params) {
   const keys = key.split('.');
   let value = translations[currentLanguage];
@@ -538,7 +485,6 @@ function t(key, params) {
     return replacePlaceholders(value, params);
   }
   
-  // Fallback to Turkish if key not found
   if (currentLanguage !== 'tr') {
     let fallback = translations['tr'];
     for (const k of keys) {
@@ -553,11 +499,9 @@ function t(key, params) {
     }
   }
   
-  // If still not found, return the key itself
   return key;
 }
 
-// Set language function
 function setLanguage(lang) {
   if (translations[lang]) {
     currentLanguage = lang;
@@ -565,20 +509,16 @@ function setLanguage(lang) {
       localStorage.setItem('app_language', lang);
     } catch {}
     
-    // Update HTML lang attribute
     document.documentElement.lang = lang;
     
-    // Trigger a custom event for language change
     window.dispatchEvent(new CustomEvent('languagechange', { detail: { language: lang } }));
   }
 }
 
-// Get current language
 function getLanguage() {
   return currentLanguage;
 }
 
-// Initialize language from localStorage
 function initLanguage() {
   try {
     const saved = localStorage.getItem('app_language');
@@ -589,8 +529,6 @@ function initLanguage() {
   } catch {}
 }
 
-
-// Export to window FIRST
 window.t = t;
 window.setLanguage = setLanguage;
 window.getLanguage = getLanguage;
@@ -601,10 +539,8 @@ window.i18n = {
   translations
 };
 
-// Then auto-initialize
 initLanguage();
 
-// Trigger DOMContentLoaded event if needed
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     console.log('i18n loaded and ready');
