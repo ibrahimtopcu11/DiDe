@@ -223,22 +223,32 @@ function bulbSVG(on=true){
 
 function setTheme(mode){
   const root = document.documentElement;
+  
+  root.classList.remove('theme-light', 'theme-dark');
+  
   if(mode === 'dark'){
-    root.classList.remove('theme-light');
     root.classList.add('theme-dark');
-    const b = themeBtn(); if (b) b.innerHTML = bulbSVG(false);
+    const b = themeBtn(); 
+    if (b) b.innerHTML = bulbSVG(false);
   }else{
-    root.classList.remove('theme-dark');
     root.classList.add('theme-light');
-    const b = themeBtn(); if (b) b.innerHTML = bulbSVG(true);
+    const b = themeBtn(); 
+    if (b) b.innerHTML = bulbSVG(true);
   }
-  try{ localStorage.setItem(THEME_KEY, mode); }catch{}
+  
+  try{ 
+    localStorage.setItem(THEME_KEY, mode); 
+  }catch{}
 }
 
 function applySavedTheme(){
   let saved = null;
-  try{ saved = localStorage.getItem(THEME_KEY); }catch{}
-  setTheme(saved === 'dark' ? 'dark' : 'light');
+  try{ 
+    saved = localStorage.getItem(THEME_KEY); 
+  }catch{}
+  
+  const themeToApply = (saved === 'dark') ? 'dark' : 'light';
+  setTheme(themeToApply);
 }
 
 function wireEyes(){

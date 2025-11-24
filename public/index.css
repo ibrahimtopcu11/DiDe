@@ -1,7 +1,8 @@
 /* ==========
    Basic / Variables
    ========== */
-:root{
+:root,
+:root.theme-light{
   --maxw: 100%;
   --bg: #fafafa;
   --surface: #ffffff;
@@ -20,6 +21,44 @@
   --radius: 12px;
   --radius-sm: 8px;
   --focus: 2px solid #93c5fd;
+
+  --sheet-progress: 0;
+
+  --header-h: 66px;
+  --map-h: calc(100vh - var(--header-h) - 16px);
+  --panel-h: var(--map-h);
+
+  --desc-h: 120px;
+  --desc-max-h: 220px;
+
+  --tbl-font: clamp(13px, 1.05vw, 15px);
+  --tbl-head: clamp(13.5px, 1.1vw, 16px);
+
+  --legend-font: clamp(10px, 2.8vw, 13px);
+  --legend-w: clamp(160px, 36%, 320px);
+  --legend-maxh: clamp(120px, 38vh, 44vh);
+}
+
+/* Dark Theme */
+:root.theme-dark{
+  --maxw: 100%;
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --border: #334155;
+  --border-soft: #334155;
+  --primary: #3b82f6;
+  --primary-600: #2563eb;
+  --primary-700: #1d4ed8;
+  --danger: #dc2626;
+  --danger-soft: #ef4444;
+  --ghost: transparent;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 6px 16px rgba(0,0,0,.4);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --focus: 2px solid #60a5fa;
 
   --sheet-progress: 0;
 
@@ -103,6 +142,11 @@ header{
   backdrop-filter: saturate(180%) blur(8px);
   padding-top: env(safe-area-inset-top);
   box-shadow: var(--shadow-sm);
+}
+
+:root.theme-dark header{
+  background: rgba(15, 23, 42, 0.95);
+  border-bottom-color: var(--border);
 }
 
 .wrap{
@@ -258,13 +302,19 @@ header{
 }
 
 .card-back-btn img{
-  filter: none; 
+  filter: none !important;
   width: 20px;
   height: 20px;
 }
 
 .header-back-btn{
   display: none !important;
+}
+
+:root.theme-dark .card-back-btn img,
+:root.theme-dark .header-back-btn img{
+  filter: none !important;
+  opacity: 1 !important;
 }
 /* Mobil: Tam ekran modal */
 @media (max-width: 576px){
@@ -281,7 +331,37 @@ header{
     padding: clamp(60px, 10vh, 80px) clamp(16px, 4vw, 24px) clamp(20px, 4vh, 32px);
   }
 }
+/* Dark Mode - Login/Register/Forgot Cards */
+:root.theme-dark #login-card,
+:root.theme-dark #register-card,
+:root.theme-dark #forgot-card{
+  background: var(--surface);
+  color: var(--text);
+}
 
+:root.theme-dark #login-card h2,
+:root.theme-dark #register-card h2,
+:root.theme-dark #forgot-card h2{
+  color: var(--text);
+}
+
+:root.theme-dark #login-card label,
+:root.theme-dark #register-card label,
+:root.theme-dark #forgot-card label{
+  color: var(--text);
+}
+
+:root.theme-dark #login-card a,
+:root.theme-dark #register-card a,
+:root.theme-dark #forgot-card a{
+  color: var(--primary);
+}
+
+:root.theme-dark #login-card .muted,
+:root.theme-dark #register-card .muted,
+:root.theme-dark #forgot-card .muted{
+  color: var(--muted);
+}
 /* ==========
    Kullanıcı Girişi: Tam Ekran Harita + Olay Formu Modal
    ========== */
@@ -363,7 +443,23 @@ body.role-user #olay-card.hidden{
     gap: clamp(8px, 2vw, 12px);
   }
 }
+/* Dark Mode - Event Form Card */
+:root.theme-dark #olay-card{
+  background: var(--surface);
+  color: var(--text);
+}
 
+:root.theme-dark #olay-card h2{
+  color: var(--text);
+}
+
+:root.theme-dark #olay-card label{
+  color: var(--text);
+}
+
+:root.theme-dark #olay-card .muted{
+  color: var(--muted);
+}
 /* ==========
    Butonlar
    ========== */
@@ -440,7 +536,76 @@ body.role-user #olay-card.hidden{
   50%{ box-shadow: 0 0 0 12px rgba(185,28,28,0); }
   100%{ box-shadow: 0 0 0 0 rgba(185,28,28,0); }
 }
+:root.theme-dark .icon-btn img,
+:root.theme-dark .icon-btn svg,
+:root.theme-dark .icon-btn svg *,
+:root.theme-dark .card-back-btn img,
+:root.theme-dark .card-back-btn svg,
+:root.theme-dark .card-back-btn svg *,
+:root.theme-dark .header-back-btn img,
+:root.theme-dark .header-back-btn svg,
+:root.theme-dark .header-back-btn svg *,
+:root.theme-dark #btn-use-location img,
+:root.theme-dark #btn-use-location svg,
+:root.theme-dark #btn-use-location svg *,
+:root.theme-dark #btn-add-photo img,
+:root.theme-dark #btn-add-photo svg,
+:root.theme-dark #btn-add-photo svg *,
+:root.theme-dark #btn-add-video img,
+:root.theme-dark #btn-add-video svg,
+:root.theme-dark #btn-add-video svg *,
+:root.theme-dark #btn-stt img,
+:root.theme-dark #btn-stt svg,
+:root.theme-dark #btn-stt svg *,
+:root.theme-dark .media-loc-btn img,
+:root.theme-dark .media-loc-btn svg,
+:root.theme-dark .media-loc-btn svg *,
+:root.theme-dark .stt-btn img,
+:root.theme-dark .stt-btn svg,
+:root.theme-dark .stt-btn svg *,
+:root.theme-dark .back-btn img,
+:root.theme-dark .back-btn svg,
+:root.theme-dark .back-btn svg *,
+:root.theme-dark button img,
+:root.theme-dark button svg,
+:root.theme-dark button svg *{
+  filter: none !important;
+  opacity: 1 !important;
+}
 
+:root.theme-dark .icon-btn svg path,
+:root.theme-dark .icon-btn svg,
+:root.theme-dark .card-back-btn svg path,
+:root.theme-dark .card-back-btn svg,
+:root.theme-dark .header-back-btn svg path,
+:root.theme-dark .header-back-btn svg,
+:root.theme-dark #btn-use-location svg path,
+:root.theme-dark #btn-use-location svg,
+:root.theme-dark #btn-add-photo svg path,
+:root.theme-dark #btn-add-photo svg,
+:root.theme-dark #btn-add-video svg path,
+:root.theme-dark #btn-add-video svg,
+:root.theme-dark #btn-stt svg path,
+:root.theme-dark #btn-stt svg,
+:root.theme-dark .back-btn svg path,
+:root.theme-dark .back-btn svg,
+:root.theme-dark button svg path,
+:root.theme-dark button svg{
+  fill: #111827 !important;
+  color: #111827 !important;
+}
+
+:root.theme-dark .icon-btn,
+:root.theme-dark .card-back-btn,
+:root.theme-dark .header-back-btn,
+:root.theme-dark #btn-use-location,
+:root.theme-dark #btn-add-photo,
+:root.theme-dark #btn-add-video,
+:root.theme-dark #btn-stt,
+:root.theme-dark .back-btn{
+  background: #ffffff !important;
+  border-color: var(--border) !important;
+}
 /* ==========
    Layout - Supervisor Admin Modu
    ========== */
@@ -600,7 +765,37 @@ body.sheet-open #map{
 .leaflet-top.leaflet-right .leaflet-bar a[title*="GeoJSON"] {
   display: none !important;
 }
+/* Dark Mode - Leaflet Popups */
+:root.theme-dark .leaflet-popup-content-wrapper{
+  background: var(--surface);
+  color: var(--text);
+}
 
+:root.theme-dark .leaflet-popup-content{
+  color: var(--text);
+}
+
+:root.theme-dark .leaflet-popup-tip{
+  background: var(--surface);
+}
+
+:root.theme-dark .popup-body{
+  color: var(--text);
+}
+
+:root.theme-dark .popup-meta{
+  color: var(--muted);
+}
+
+:root.theme-dark .badge.mine{
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+:root.theme-dark .badge.other{
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
 /* ==========
    Form Elemanları
    ========== */
@@ -626,6 +821,24 @@ input[type="password"]{
   -webkit-text-fill-color: #000;
   color-scheme: light;
   transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+
+:root.theme-dark textarea,
+:root.theme-dark select,
+:root.theme-dark input[type="text"],
+:root.theme-dark input[type="email"],
+:root.theme-dark input[type="password"]{
+  background: var(--surface);
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  border-color: var(--border);
+  color-scheme: dark;
+}
+
+:root.theme-dark textarea::placeholder,
+:root.theme-dark input::placeholder{
+  color: var(--muted);
+  opacity: 0.7;
 }
 
 
@@ -805,7 +1018,13 @@ label[for="aciklama"] + #btn-stt,
   display: inline-flex !important;
   margin-top: 8px;
 }
-
+:root.theme-dark #media-bar .icon-btn img,
+:root.theme-dark #media-bar .icon-btn svg,
+:root.theme-dark #media-bar button img,
+:root.theme-dark #media-bar button svg{
+  filter: none !important;
+  opacity: 1 !important;
+}
 /* ==========
    Yönetim Paneli 
    ========== */
@@ -906,6 +1125,32 @@ body.supervisor-mode-admin #olay-card{
   background:#d1d5db; 
   border-radius:8px; 
   border:2px solid #fff;
+}
+/* Dark Mode - Admin Panel */
+:root.theme-dark #admin-card{
+  background: var(--surface);
+  color: var(--text);
+}
+
+:root.theme-dark .panel{
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+:root.theme-dark .panel h4{
+  color: var(--text);
+  border-bottom-color: var(--border);
+}
+
+:root.theme-dark #admin-card::-webkit-scrollbar-thumb{
+  background: #475569;
+  border-color: var(--surface);
+}
+
+:root.theme-dark .panel .panel-body::-webkit-scrollbar-thumb,
+:root.theme-dark .panel .table-wrap::-webkit-scrollbar-thumb{
+  background: #475569;
+  border-color: var(--surface);
 }
 
 /* ==========
@@ -1016,6 +1261,11 @@ td{
     height: 16px;
   }
 }
+
+:root.theme-dark .table-export-btn img{
+  filter: none !important;
+  opacity: 1 !important;
+}
 /* ==========
    Filtreleme
    ========== */
@@ -1110,7 +1360,31 @@ td{
   max-height: none;
   overflow-y: visible;
 }
+/* Dark Mode - Filter Dropdown */
+:root.theme-dark .filter-dropdown{
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
 
+:root.theme-dark .filter-search{
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+:root.theme-dark .filter-option{
+  color: var(--text);
+}
+
+:root.theme-dark .filter-option:hover{
+  background: rgba(59, 130, 246, 0.15);
+}
+
+:root.theme-dark .filter-options-container::-webkit-scrollbar-thumb{
+  background: #475569;
+  border-color: var(--surface);
+}
 /* ==========
    Tab Navigation
    ========== */
@@ -1143,7 +1417,22 @@ td{
 .tab-btn:hover{ color:var(--text); }
 .tab-content{ display:none; }
 .tab-content.active{ display:block; }
+/* Dark Mode - Tabs */
+:root.theme-dark .tab-nav{
+  border-bottom-color: var(--border);
+}
 
+:root.theme-dark .tab-btn{
+  color: var(--muted);
+}
+
+:root.theme-dark .tab-btn.active{
+  color: var(--primary);
+}
+
+:root.theme-dark .tab-btn:hover{
+  color: var(--text);
+}
 /* ==========
    Pagination
    ========== */
@@ -1194,7 +1483,30 @@ td{
   color:#fff; 
   border-color:var(--primary);
 }
+/* Dark Mode - Pagination */
+:root.theme-dark .pagination{
+  border-top-color: var(--border);
+}
 
+:root.theme-dark .pagination-info{
+  color: var(--muted);
+}
+
+:root.theme-dark .pagination-controls button{
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+:root.theme-dark .pagination-controls button:hover:not(:disabled){
+  background: var(--primary);
+  color: #fff;
+}
+
+:root.theme-dark .pagination-controls button.active{
+  background: var(--primary);
+  color: #fff;
+}
 @media (max-width: 1200px){
   body.supervisor-mode-admin .panel .panel-body,
   body.supervisor-mode-admin .panel .table-wrap,
@@ -1223,9 +1535,33 @@ td{
   gap: clamp(6px, 1.2vw, 10px);
   margin-top:6px;
 }
+/* Dark Mode - Tables */
+:root.theme-dark table{
+  background: var(--surface);
+  color: var(--text);
+}
 
-/* ==================== FORM İÇİ MEDYA SCROLL ==================== */
-/* ==================== FORM İÇİ MEDYA DÜZENİ (Sol-Sağ + Sil Butonu) ==================== */
+:root.theme-dark th{
+  color: var(--text);
+  font-weight: 700;
+  border-bottom-color: var(--border);
+}
+
+:root.theme-dark td{
+  color: var(--text);
+  border-bottom-color: var(--border);
+}
+
+:root.theme-dark .td-desc{
+  color: var(--text);
+}
+
+:root.theme-dark .td-desc::-webkit-scrollbar-thumb{
+  background: #475569;
+  border-color: var(--surface);
+}
+
+/* ==================== FORM İÇİ MEDYA DÜZENİ ==================== */
 
 /* Fotoğraf SOL, Video SAĞ */
 #photo-list,
@@ -1365,7 +1701,21 @@ td{
   border-radius:6px; 
   display:block;
 }
+/* Dark Mode - Media Thumbnails */
+:root.theme-dark .media-thumb-wrapper{
+  border-color: var(--border);
+  background: var(--surface);
+}
 
+:root.theme-dark .media-scroll-container::-webkit-scrollbar-thumb{
+  background: #475569;
+  border-color: var(--surface);
+}
+
+:root.theme-dark .thumb-tile{
+  border-color: var(--border);
+  background: var(--surface);
+}
 /* ==========
    Modal
    ========== */
@@ -1420,6 +1770,17 @@ td{
 }
 body.modal-open{
   overflow: hidden !important;
+}
+/* Dark Mode - Modals */
+:root.theme-dark .modal .box{
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+:root.theme-dark .modal .box h3,
+:root.theme-dark .modal .box h4{
+  color: var(--text);
 }
 /* ==========
    Toast
@@ -1486,7 +1847,26 @@ a:focus-visible{
   background: var(--border-soft); 
   margin:10px 0;
 }
+/* Dark Mode - Cards & Info */
+:root.theme-dark .card{
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
 
+:root.theme-dark .card h3{
+  color: var(--text);
+}
+
+:root.theme-dark .info{
+  background: rgba(51, 65, 85, 0.4);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+:root.theme-dark .sep{
+  background: var(--border);
+}
 /* ==========
    Map Legend - Responsive
    ========== */
@@ -1630,7 +2010,25 @@ a:focus-visible{
 
 .leaflet-control .info{ display:none !important; }
 
+/* Dark Mode - Map Legend */
+:root.theme-dark .map-legend{
+  background: rgba(30, 41, 59, 0.95);
+  border-color: var(--border);
+  color: var(--text);
+}
 
+:root.theme-dark .map-legend .legend-title{
+  color: var(--text);
+}
+
+:root.theme-dark .map-legend .legend-item span{
+  color: var(--text);
+}
+
+:root.theme-dark .map-legend::-webkit-scrollbar-thumb{
+  background: #475569;
+  border-color: var(--surface);
+}
 /* ==========
    Cluster İkonları 
    ========== */
@@ -1665,81 +2063,7 @@ a:focus-visible{
   font-size: clamp(12px, 2.2vw, 15px);
 }
 
-/* ==========
-   Dark Mode
-   ========== */
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg: #0b1020; 
-    --surface: #0f172a;
-    --text: #e5e7eb; 
-    --muted:#9ca3af;
-    --border:#1f2937; 
-    --border-soft:#1f2937;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
-    --shadow-md: 0 6px 16px rgba(0,0,0,.35);
-  }
-  
-  header{ border-bottom-color: var(--border); }
-  
-  .auth .btn{ 
-    background:#fff !important; 
-    color:#000 !important; 
-    border-color: var(--border);
-  }
-  
-  .btn.ghost{ background:transparent; }
 
-  textarea, select, 
-  input[type="text"], 
-  input[type="email"], 
-  input[type="password"]{
-    background:#fff !important; 
-    border-color: var(--border);
-    color:#000 !important; 
-    -webkit-text-fill-color:#000 !important; 
-    color-scheme: light;
-    box-shadow: 0 0 0 1000px #fff inset;
-  }
-  
-  input:-webkit-autofill, 
-  input:-webkit-autofill:hover, 
-  input:-webkit-autofill:focus{
-    -webkit-text-fill-color:#000 !important; 
-    box-shadow: 0 0 0px 1000px #fff inset !important;
-  }
-
-  #map{ border-color: var(--border); }
-  
-  .info{ 
-    background:#0b1222; 
-    border-color: var(--border); 
-    color: var(--text);
-  }
-  
-  #admin-card::-webkit-scrollbar-thumb,
-  .panel .panel-body::-webkit-scrollbar-thumb,
-  .panel .table-wrap::-webkit-scrollbar-thumb{ 
-    border-color: var(--surface);
-  }
-  
-  table{ background: var(--surface); }
-  
-  .filter-dropdown{
-    background: var(--surface);
-    border-color: var(--border);
-  }
-  
-  .filter-search{
-    background: #1f2937;
-    color: var(--text);
-    border-color: var(--border);
-  }
-  
-  .filter-option:hover{
-    background: rgba(37, 99, 235, 0.15);
-  }
-}
 
 /* ==========
    Print Mode
