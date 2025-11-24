@@ -4461,6 +4461,12 @@ function reflectAuth(){
     headerLocBtn.style.display = shouldShow ? 'inline-flex' : 'none';
   }
 
+  const videoBtn = qs('#btn-add-video');
+  if (videoBtn) {
+    const shouldShowVideo = !currentUser || currentUser.role !== 'user';
+    videoBtn.style.display = shouldShowVideo ? 'inline-flex' : 'none';
+  }
+
   if (currentUser){
     if (who) { 
       who.textContent = t('greeting', { username: currentUser.username, role: currentUser.role }); 
