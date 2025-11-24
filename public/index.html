@@ -330,7 +330,7 @@
         </div>
         <div id="login-error" class="error hidden"></div>
         <label for="login-user" data-i18n="usernameOrEmail">Username or Email</label>
-        <input id="login-user" type="text" data-i18n-placeholder="usernameOrEmail"
+        <input id="login-user" type="text" data-i18n-placeholder="usernameOrEmailPlaceholder"
                autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" />
         <label for="login-pass" data-i18n="password">Password</label>
         <div class="input-wrap">
@@ -360,17 +360,17 @@
         <div id="register-error" class="error hidden"></div>
         <div id="allowed-domain" class="muted hidden"></div>
         <label for="reg-username" data-i18n="username">Username</label>
-        <input id="reg-username" type="text" data-i18n-placeholder="username" autocomplete="off" />
+        <input id="reg-username" type="text" data-i18n-placeholder="usernamePlaceholder" autocomplete="off" />
         <label for="reg-email" data-i18n="email">Email</label>
         <input id="reg-email" type="email" placeholder="example@domain.com" autocomplete="off" />
         <label for="reg-pass" data-i18n="password">Password</label>
         <div class="input-wrap">
-          <input id="reg-pass" type="password" data-i18n-placeholder="weakPassword" autocomplete="new-password" />
+          <input id="reg-pass" type="password" data-i18n-placeholder="weakPasswordPlaceholder" autocomplete="new-password" />
           <button type="button" class="eye-btn" data-eye="reg-pass" title="Show/Hide">👁</button>
         </div>
         <div class="row">
-          <div><label for="reg-name" data-i18n="firstName">First Name</label><input id="reg-name" type="text" autocomplete="off" data-i18n-placeholder="firstName" /></div>
-          <div><label for="reg-surname" data-i18n="lastName">Last Name</label><input id="reg-surname" type="text" autocomplete="off" data-i18n-placeholder="lastName" /></div>
+          <div><label for="reg-name" data-i18n="firstName">First Name</label><input id="reg-name" type="text" autocomplete="off" data-i18n-placeholder="firstNamePlaceholder" /></div>
+          <div><label for="reg-surname" data-i18n="lastName">Last Name</label><input id="reg-surname" type="text" autocomplete="off" data-i18n-placeholder="lastNamePlaceholder" /></div>
         </div>
         <button id="btn-register" class="btn primary" style="margin-top:10px;" data-i18n="signUp">Sign Up</button>
         <div class="muted" style="margin-top:8px;"><a href="#" id="toggle-login"><span data-i18n="alreadyHaveAccount">Already have an account?</span> <span data-i18n="login">Login</span></a></div>
@@ -388,7 +388,7 @@
         <div id="forgot-error" class="error hidden"></div>
         <div id="fg-email-row">
           <label for="fg-email" data-i18n="email">Email</label>
-          <input id="fg-email" type="email" data-i18n-placeholder="registeredEmail" autocomplete="email" />
+          <input id="fg-email" type="email" data-i18n-placeholder="registeredEmailPlaceholder" autocomplete="email" />
           <div class="inline" style="gap:8px; margin:8px 0;">
             <button id="btn-forgot-start" class="btn" data-i18n="sendCode">Send Code</button>
           </div>
@@ -402,11 +402,11 @@
         </div>
         <div id="fg-pass1-row" class="hidden">
           <label for="fg-pass1" data-i18n="newPassword">New Password</label>
-          <input id="fg-pass1" type="password" data-i18n-placeholder="newPassword" autocomplete="new-password" />
+          <input id="fg-pass1" type="password" data-i18n-placeholder="newPasswordPlaceholder" autocomplete="new-password" />
         </div>
         <div id="fg-pass2-row" class="hidden">
           <label for="fg-pass2" data-i18n="confirmNewPassword">Confirm New Password</label>
-          <input id="fg-pass2" type="password" data-i18n-placeholder="confirmNewPassword" autocomplete="new-password" />
+          <input id="fg-pass2" type="password" data-i18n-placeholder="confirmNewPasswordPlaceholder" autocomplete="new-password" />
           <div class="inline" style="gap:8px; margin-top:8px;">
             <button id="btn-forgot-reset" class="btn primary" data-i18n="resetPassword">Reset Password</button>
           </div>
@@ -430,11 +430,11 @@
         <select id="olay_turu"><option value="" data-i18n="pleaseSelect">-- Select --</option></select>
 
         <label for="aciklama" style="margin-top:6px;" data-i18n="description">Description</label>
-        <textarea id="aciklama" rows="4" data-i18n-placeholder="enterDescription" style="resize:none;"></textarea>
+        <textarea id="aciklama" rows="4" data-i18n-placeholder="enterDescriptionPlaceholder" style="resize:none;"></textarea>
 
         <div class="row coord-row">
-          <div><label for="lat" data-i18n="latitude">Latitude</label><input id="lat" type="text" data-i18n-placeholder="selectFromMap" /></div>
-          <div><label for="lng" data-i18n="longitude">Longitude</label><input id="lng" type="text" data-i18n-placeholder="selectFromMap" /></div>
+          <div><label for="lat" data-i18n="latitude">Latitude</label><input id="lat" type="text" data-i18n-placeholder="selectFromMapPlaceholder" /></div>
+          <div><label for="lng" data-i18n="longitude">Longitude</label><input id="lng" type="text" data-i18n-placeholder="selectFromMapPlaceholder" /></div>
         </div>
 
         <div class="inline" style="gap:8px; margin:8px 0;" id="media-bar">
@@ -479,7 +479,7 @@
           <div class="panel">
             <div style="margin:6px 0;">
               <div style="margin-bottom:8px;">
-                <input id="new-type-name" type="text" data-i18n-placeholder="newEventTypeName" style="width:100%;" />
+                <input id="new-type-name" type="text" data-i18n-placeholder="newEventTypeNamePlaceholder" style="width:100%;" />
               </div>
               <div style="margin-bottom:8px;">
                 <label style="display:block; margin-bottom:6px; font-weight:500;" data-i18n="isBeneficial">Is it beneficial to citizens?</label>
@@ -665,7 +665,7 @@
       </div>
       <div style="margin:12px 0;">
         <label for="update-type-input" data-i18n="typeName">Event Type Name</label>
-        <input id="update-type-input" type="text" data-i18n-placeholder="typeName" autocomplete="off" />
+        <input id="update-type-input" type="text" data-i18n-placeholder="typeNamePlaceholder" autocomplete="off" />
       </div>
       <div style="margin:12px 0;">
         <label style="display:block; margin-bottom:6px; font-weight:500;" data-i18n="isBeneficial">Is it beneficial to citizens?</label>

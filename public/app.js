@@ -4313,7 +4313,7 @@ function restoreMapViewFromOverlay(){
     try { 
       resetEdit(); 
     } catch(e) {
-      console.error('[RESTORE] resetEdit() error:', e);
+      console.warn('resetEdit error:', e);
     }
   }
 
@@ -4322,14 +4322,22 @@ function restoreMapViewFromOverlay(){
   try {
     stopLiveLocation();
   } catch(e) {
-    console.warn('[RESTORE] Live location stop error:', e);
+    console.warn('stopLiveLocation error:', e);
   }
   
-  try { 
-    history.back(); 
-  } catch(e) {
-    console.warn('[RESTORE] history.back() error:', e);
+  if (!currentUser) {
+    const showGood = boolFromConfigValue(APP_CONFIG.showGoodEventsOnLogin);
+    const showBad = boolFromConfigValue(APP_CONFIG.showBadEventsOnLogin);
+    if (showGood || showBad) {
+      try {
+        loadExistingEvents({ publicMode: true });
+      } catch(e) {
+        console.warn('Public events load error:', e);
+      }
+    }
   }
+  
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function anyOverlayVisible(){
@@ -4340,11 +4348,6 @@ function anyOverlayVisible(){
   });
 }
 
-window.addEventListener('popstate', () => {
-  if (anyOverlayVisible()) {
-    restoreMapViewFromOverlay();
-  }
-});
 
 function goDefaultScreen(){
   if (currentUser){
@@ -4362,8 +4365,6 @@ function goDefaultScreen(){
 }
 
 async function goToDefaultLoginScreen(){
-  try { await logout(); } catch {}
-
   hide(qs('#login-card'));
   hide(qs('#register-card')); 
   hide(qs('#forgot-card')); 
@@ -4372,6 +4373,8 @@ async function goToDefaultLoginScreen(){
 
   const mapEl = document.getElementById('map');
   if (mapEl) mapEl.classList.remove('blur-background');
+  
+  document.querySelectorAll('.header-back-btn, .card-back-btn').forEach(btn => btn.remove());
   
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -4858,12 +4861,19 @@ function ensureAuthBackButton(cardSelector){
   headerBackBtn.className = 'btn primary icon-btn header-back-btn';
   headerBackBtn.innerHTML = '<img src="/back.svg" alt="' + t('back') + '" width="20" height="20" loading="lazy" />';
   headerBackBtn.title = t('back');
-  headerBackBtn.onclick = () => {
+  headerBackBtn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
     restoreMapViewFromOverlay();
-
-    try { history.back(); } catch (e) {}
-
-    headerBackBtn.remove();
+    
+    try {
+      if (window.history.state && window.history.state.overlay) {
+        window.history.back();
+      }
+    } catch(e) {
+      console.warn('History back error:', e);
+    }
   };
 
   const wrap = header.querySelector('.wrap') || header;
@@ -5232,6 +5242,17 @@ function detachMapClickForLoggedOut(){
   if (liveMarker){ try { map.removeLayer(liveMarker); } catch{}; liveMarker = null; }
   if (liveAccuracyCircle){ try { map.removeLayer(liveAccuracyCircle); } catch{}; liveAccuracyCircle = null; }
 }
+window.addEventListener('popstate', (event) => {
+  if (event.state && event.state.overlay) {
+  } else {
+    const isOverlayVisible = anyOverlayVisible();
+    
+    if (isOverlayVisible) {
+      event.preventDefault();
+      restoreMapViewFromOverlay();
+    }
+  }
+});
 
 /* ==================== INITIALIZATION ==================== */
 (async function init(){
@@ -5239,6 +5260,22 @@ function detachMapClickForLoggedOut(){
     console.error('i18n not loaded!');
     return;
   }
+  
+  if (typeof window.setLanguage === 'function') {
+    window.setLanguage('en');
+  }
+  
+  if (typeof window.loadTranslations === 'function') {
+    await window.loadTranslations('en');
+  }
+
+  await updateUIWithNewLanguage();
+
+  document.querySelectorAll('.language-selector button').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  const enBtn = document.getElementById('lang-en');
+  if (enBtn) enBtn.classList.add('active');
   
   (function addHeaderLocationBtn(){
     const header = document.querySelector('header .wrap') || document.querySelector('header');
@@ -5400,6 +5437,49 @@ async function updateUIWithNewLanguage() {
   if (siteTitle && APP_CONFIG.siteTitle) {
     siteTitle.textContent = APP_CONFIG.siteTitle;
   }
+  
+  const loginUser = qs('#login-user');
+  if (loginUser) loginUser.placeholder = t('usernameOrEmailPlaceholder');
+  
+  const loginPass = qs('#login-pass');
+  if (loginPass) loginPass.placeholder = t('passwordPlaceholder');
+  
+  const loginTotp = qs('#login-totp');
+  if (loginTotp) loginTotp.placeholder = t('verificationCode');
+  
+  const regUsername = qs('#reg-username');
+  if (regUsername) regUsername.placeholder = t('usernamePlaceholder');
+  
+  const regEmail = qs('#reg-email');
+  if (regEmail) regEmail.placeholder = t('registeredEmailPlaceholder');
+  
+  const regPass = qs('#reg-pass');
+  if (regPass) regPass.placeholder = t('weakPasswordPlaceholder');
+  
+  const regName = qs('#reg-name');
+  if (regName) regName.placeholder = t('firstNamePlaceholder');
+  
+  const regSurname = qs('#reg-surname');
+  if (regSurname) regSurname.placeholder = t('lastNamePlaceholder');
+  
+  const fgEmail = qs('#fg-email');
+  if (fgEmail) fgEmail.placeholder = t('registeredEmailPlaceholder');
+  
+  const fgCode = qs('#fg-code');
+  if (fgCode) fgCode.placeholder = t('verificationCode');
+  
+  const fgPass1 = qs('#fg-pass1');
+  if (fgPass1) fgPass1.placeholder = t('newPasswordPlaceholder');
+  
+  const fgPass2 = qs('#fg-pass2');
+  if (fgPass2) fgPass2.placeholder = t('confirmNewPasswordPlaceholder');
+  
+  const aciklama = qs('#aciklama');
+  if (aciklama) aciklama.placeholder = t('enterDescriptionPlaceholder');
+  
+  const newTypeName = qs('#new-type-name');
+  if (newTypeName) newTypeName.placeholder = t('newEventTypeNamePlaceholder');
+  
   const btnOpenLogin = document.querySelector('#btn-open-login');
   if (btnOpenLogin) btnOpenLogin.textContent = t('login');
   
@@ -5711,12 +5791,12 @@ document.addEventListener('DOMContentLoaded', () => {
       hide(qs('#olay-card'));
       show(qs('#login-card'));
       
-      pushOverlayState('login-card');
-      
       ensureAuthBackButton('#login-card');
       
       const mapEl = document.getElementById('map');
       if (mapEl) mapEl.classList.add('blur-background');
+      
+      pushOverlayState('login-card');
       
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
@@ -5751,4 +5831,4 @@ document.addEventListener('DOMContentLoaded', () => {
       activeLangBtn.classList.add('active');
     }
   }
-}); 
+});

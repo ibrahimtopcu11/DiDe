@@ -226,7 +226,21 @@ const translations = {
     
     supervisorCannotAdd: 'Supervisor ekleyemez',
     
-    pleaseEnterVerificationCode: 'Lütfen doğrulama kodunu girin'
+    pleaseEnterVerificationCode: 'Lütfen doğrulama kodunu girin',
+    
+    usernameOrEmailPlaceholder: 'kullanici_adi veya ornek@email.com',
+    usernamePlaceholder: 'kullanici_adi',
+    passwordPlaceholder: '••••••••',
+    weakPasswordPlaceholder: 'En az 8 karakter, büyük/küçük harf, sembol',
+    firstNamePlaceholder: 'Adınız',
+    lastNamePlaceholder: 'Soyadınız',
+    registeredEmailPlaceholder: 'kayitli@email.com',
+    newPasswordPlaceholder: 'Yeni parolanız',
+    confirmNewPasswordPlaceholder: 'Yeni parolanızı tekrar girin',
+    enterDescriptionPlaceholder: 'Açıklama girin...',
+    selectFromMapPlaceholder: 'Haritadan seçin',
+    newEventTypeNamePlaceholder: 'Yeni olay türü adı',
+    typeNamePlaceholder: 'Tür adı'
   },
   
   en: {
@@ -456,7 +470,21 @@ const translations = {
     
     supervisorCannotAdd: 'Supervisor cannot add',
     
-    pleaseEnterVerificationCode: 'Please enter verification code'
+    pleaseEnterVerificationCode: 'Please enter verification code',
+    
+    usernameOrEmailPlaceholder: 'username or example@email.com',
+    usernamePlaceholder: 'username',
+    passwordPlaceholder: '••••••••',
+    weakPasswordPlaceholder: 'Min 8 chars, upper/lower case, symbol',
+    firstNamePlaceholder: 'Your name',
+    lastNamePlaceholder: 'Your surname',
+    registeredEmailPlaceholder: 'registered@email.com',
+    newPasswordPlaceholder: 'Your new password',
+    confirmNewPasswordPlaceholder: 'Re-enter new password',
+    enterDescriptionPlaceholder: 'Enter description...',
+    selectFromMapPlaceholder: 'Select from map',
+    newEventTypeNamePlaceholder: 'New event type name',
+    typeNamePlaceholder: 'Type name'
   }
 };
 
