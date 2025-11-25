@@ -1929,7 +1929,8 @@ a:focus-visible{
 .map-legend{
   position: absolute;
   right: 0.5rem;
-  bottom: 6.5rem;
+  top: auto;
+  bottom: 10rem;
   left: auto;
   z-index: 600;
   background: rgba(255, 255, 255, 0.98);
@@ -1940,10 +1941,10 @@ a:focus-visible{
   padding: 0.3125rem 0.3125rem;
   font-size: 0.75rem;
   line-height: 1.15;
-  max-width: 170px;
+  max-width: 165px;
   width: auto;
-  min-width: 100px;
-  max-height: calc(100vh - var(--header-h) - 9.5rem);
+  min-width: 95px;
+  max-height: calc(100vh - var(--header-h) - 12rem);
   overflow-y: auto;
   overflow-x: hidden;
   user-select: none;
@@ -2010,54 +2011,54 @@ a:focus-visible{
 /* Bootstrap Breakpoints */
 @media (max-width: 1399.98px){
   .map-legend{
-    max-width: 165px;
+    max-width: 160px;
     padding: 0.3125rem 0.3125rem;
-    bottom: 6.25rem;
+    bottom: 9.75rem;
     right: 0.4375rem;
-    max-height: calc(100vh - var(--header-h) - 9.25rem);
+    max-height: calc(100vh - var(--header-h) - 11.75rem);
   }
 }
 
 @media (max-width: 1199.98px){
   .map-legend{
-    max-width: 155px;
+    max-width: 150px;
     padding: 0.3125rem 0.3125rem;
-    max-height: calc(100vh - var(--header-h) - 9rem);
-    bottom: 6rem;
+    max-height: calc(100vh - var(--header-h) - 11.5rem);
+    bottom: 9.5rem;
     right: 0.4375rem;
   }
 }
 
 @media (max-width: 991.98px){
   .map-legend{
-    max-width: 145px;
-    max-height: calc(100vh - var(--header-h) - 8.75rem);
+    max-width: 140px;
+    max-height: calc(100vh - var(--header-h) - 11.25rem);
     padding: 0.3125rem 0.3125rem;
-    bottom: 5.75rem;
+    bottom: 9.25rem;
     right: 0.375rem;
-    min-width: 98px;
+    min-width: 93px;
   }
 }
 
 @media (max-width: 767.98px){
   .map-legend{
-    max-width: 135px;
-    max-height: calc(100vh - var(--header-h) - 8.5rem);
+    max-width: 130px;
+    max-height: calc(100vh - var(--header-h) - 11rem);
     right: 0.3125rem;
-    bottom: 5.5rem;
+    bottom: 9rem;
     padding: 0.3125rem 0.3125rem;
-    min-width: 95px;
+    min-width: 90px;
   }
 }
 
 @media (max-width: 575.98px){
   .map-legend{
-    max-width: 120px;
-    max-height: calc(100vh - var(--header-h) - 8.25rem);
+    max-width: 115px;
+    max-height: calc(100vh - var(--header-h) - 10.75rem);
     right: 0.3125rem;
-    bottom: 5.25rem;
+    bottom: 8.75rem;
     padding: 0.25rem 0.3125rem;
-    min-width: 90px;
+    min-width: 85px;
   }
   
   .map-legend .legend-item{
@@ -2067,11 +2068,11 @@ a:focus-visible{
 
 @media (max-width: 374.98px){
   .map-legend{
-    max-width: 105px;
-    max-height: calc(100vh - var(--header-h) - 8rem);
+    max-width: 100px;
+    max-height: calc(100vh - var(--header-h) - 10.5rem);
     right: 0.25rem;
-    bottom: 5rem;
-    min-width: 80px;
+    bottom: 8.5rem;
+    min-width: 75px;
     padding: 0.25rem 0.25rem;
   }
 }
