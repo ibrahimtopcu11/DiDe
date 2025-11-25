@@ -1347,34 +1347,32 @@ app.post('/api/auth/register', async (req, res) => {
 
     await client.query('COMMIT');
 
-    if (transporter) {
-      try {
-        const verifyLink = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${verifyToken}`;
-        await transporter.sendMail({
-          from: MAIL_FROM,
-          to: email,
-          subject: 'E-posta doğrulama',
-          html: `<p>Merhaba <b>${username}</b>,</p><p>Hesabını doğrulamak için <a href="${verifyLink}">buraya tıkla</a>.</p><p>Bağlantı 24 saat geçerlidir.</p>`,
-        });
-      } catch (mailErr) {
-        console.error('mail send error:', mailErr);
-        if (!FORCE_EMAIL_VERIFY) {
-          await pool.query('UPDATE users SET email_verified=true, is_verified=true, verify_token=null, verify_expires=null WHERE id=$1', [
-            ins.rows[0].id,
-          ]);
-        } else {
-          return res.status(500).json({ error: 'eposta_gonderilemedi', message: 'Doğrulama e-postası gönderilemedi.' });
-        }
-      }
-    } else if (!FORCE_EMAIL_VERIFY) {
-      await pool.query('UPDATE users SET email_verified=true, is_verified=true, verify_token=null, verify_expires=null WHERE id=$1', [
-        ins.rows[0].id,
-      ]);
+    if (!transporter) {
+      return res.status(500).json({
+        error: 'eposta_gonderilemedi',
+        message: 'Doğrulama e-postası gönderilemedi. Lütfen daha sonra tekrar deneyin.',
+      });
     }
 
-    res.json({
+    try {
+      const verifyLink = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${verifyToken}`;
+      await transporter.sendMail({
+        from: MAIL_FROM,
+        to: email,
+        subject: 'E-posta doğrulama',
+        html: `<p>Merhaba <b>${username}</b>,</p><p>Hesabını doğrulamak için <a href="${verifyLink}">buraya tıkla</a>.</p><p>Bağlantı 24 saat geçerlidir.</p>`,
+      });
+    } catch (mailErr) {
+      console.error('[register] mail send error:', mailErr);
+      return res.status(500).json({
+        error: 'eposta_gonderilemedi',
+        message: 'Doğrulama e-postası gönderilemedi. Lütfen daha sonra tekrar deneyin.',
+      });
+    }
+
+    return res.json({
       ok: true,
-      message: transporter || FORCE_EMAIL_VERIFY ? 'dogrulama_epostasi_gonderildi' : 'eposta_dogrulama_gerekmiyor',
+      message: 'dogrulama_epostasi_gonderildi',
       user: { id: ins.rows[0].id, username },
     });
   } catch (e) {
