@@ -120,7 +120,6 @@ if (CAN_SEND_MAIL) {
   });
 }
 const MAIL_FROM = `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`;
-const FORCE_EMAIL_VERIFY = String(process.env.FORCE_EMAIL_VERIFY) === 'true';
 
 
 /* ===================== ORTA KATMANLAR ===================== */
