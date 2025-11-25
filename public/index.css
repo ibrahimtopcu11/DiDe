@@ -1928,9 +1928,8 @@ a:focus-visible{
 
 .map-legend{
   position: absolute;
-  right: 0.5rem;
+  right: 0.75rem;
   top: auto;
-  bottom: 10rem;
   left: auto;
   z-index: 600;
   background: rgba(255, 255, 255, 0.98);
@@ -1938,13 +1937,18 @@ a:focus-visible{
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  padding: 0.3125rem 0.3125rem;
+  padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
   line-height: 1.15;
-  max-width: 165px;
+
+  max-width: clamp(140px, 34vw, 200px);
   width: auto;
-  min-width: 95px;
-  max-height: calc(100vh - var(--header-h) - 12rem);
+  min-width: 90px;
+
+  bottom: 7.5rem;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6.5rem);
+  max-height: calc(100vh - var(--header-h) - 16rem);
+
   overflow-y: auto;
   overflow-x: hidden;
   user-select: none;
@@ -2011,54 +2015,39 @@ a:focus-visible{
 /* Bootstrap Breakpoints */
 @media (max-width: 1399.98px){
   .map-legend{
-    max-width: 160px;
-    padding: 0.3125rem 0.3125rem;
-    bottom: 9.75rem;
-    right: 0.4375rem;
-    max-height: calc(100vh - var(--header-h) - 11.75rem);
+    max-width: clamp(130px, 32vw, 180px);
+    padding: 0.25rem 0.5rem;
+    right: 0.5rem;
+    max-height: calc(100vh - var(--header-h) - 16rem);
   }
 }
 
 @media (max-width: 1199.98px){
   .map-legend{
-    max-width: 150px;
-    padding: 0.3125rem 0.3125rem;
-    max-height: calc(100vh - var(--header-h) - 11.5rem);
-    bottom: 9.5rem;
-    right: 0.4375rem;
+    max-width: clamp(125px, 34vw, 170px);
+    max-height: calc(100vh - var(--header-h) - 15.5rem);
   }
 }
 
 @media (max-width: 991.98px){
   .map-legend{
-    max-width: 140px;
-    max-height: calc(100vh - var(--header-h) - 11.25rem);
-    padding: 0.3125rem 0.3125rem;
-    bottom: 9.25rem;
-    right: 0.375rem;
-    min-width: 93px;
+    max-width: clamp(120px, 36vw, 165px);
+    min-width: 88px;
   }
 }
 
 @media (max-width: 767.98px){
   .map-legend{
-    max-width: 130px;
-    max-height: calc(100vh - var(--header-h) - 11rem);
-    right: 0.3125rem;
-    bottom: 9rem;
-    padding: 0.3125rem 0.3125rem;
-    min-width: 90px;
+    max-width: clamp(115px, 38vw, 160px);
+    min-width: 86px;
   }
 }
 
 @media (max-width: 575.98px){
   .map-legend{
-    max-width: 115px;
-    max-height: calc(100vh - var(--header-h) - 10.75rem);
-    right: 0.3125rem;
-    bottom: 8.75rem;
-    padding: 0.25rem 0.3125rem;
-    min-width: 85px;
+    max-width: clamp(110px, 42vw, 150px);
+    min-width: 84px;
+    padding: 0.25rem 0.4375rem;
   }
   
   .map-legend .legend-item{
@@ -2068,12 +2057,9 @@ a:focus-visible{
 
 @media (max-width: 374.98px){
   .map-legend{
-    max-width: 100px;
-    max-height: calc(100vh - var(--header-h) - 10.5rem);
-    right: 0.25rem;
-    bottom: 8.5rem;
-    min-width: 75px;
-    padding: 0.25rem 0.25rem;
+    max-width: clamp(100px, 46vw, 140px);
+    min-width: 78px;
+    padding: 0.25rem 0.375rem;
   }
 }
 
