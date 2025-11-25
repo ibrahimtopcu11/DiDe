@@ -142,6 +142,7 @@ header{
   backdrop-filter: saturate(180%) blur(8px);
   padding-top: env(safe-area-inset-top);
   box-shadow: var(--shadow-sm);
+  overflow: visible;
 }
 
 :root.theme-dark header{
@@ -152,91 +153,114 @@ header{
 .wrap{
   max-width: 100%;
   margin: 0 auto;
-  padding: clamp(8px, 1.5vw, 12px);
+  padding: 0.75rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: clamp(8px, 2vw, 16px);
+  gap: 1rem;
   flex-wrap: nowrap; 
   min-height: 48px;
 }
 
 .brand{ 
-  display:flex; 
-  align-items:center; 
-  gap: clamp(6px, 1.2vw, 12px);
+  display: flex; 
+  align-items: center; 
+  gap: 0.75rem;
   flex: 0 1 auto;
-  min-width:0;
+  min-width: 0;
 }
 
 .brand img{ 
-  height: clamp(32px, 6vw, 48px);
-  width: clamp(32px, 6vw, 48px);
-  object-fit:contain; 
-  border-radius:6px;
+  height: 48px;
+  width: 48px;
+  object-fit: contain; 
+  border-radius: 6px;
   transition: all 0.3s ease;
+  flex-shrink: 0;
 }
 
 .brand h1{ 
-  font-size: clamp(14px, 2.8vw, 20px);
-  margin:0; 
-  white-space:nowrap; 
-  overflow:hidden; 
-  text-overflow:ellipsis;
+  font-size: 1.25rem;
+  margin: 0; 
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis;
   font-weight: 700;
   transition: font-size 0.3s ease;
 }
 
 .auth{ 
-  display:flex; 
-  align-items:center; 
-  gap: clamp(6px, 1.2vw, 10px);
+  display: flex; 
+  align-items: center; 
+  gap: 0.625rem;
   flex: 0 0 auto;
   flex-wrap: nowrap; 
 }
 
 .auth .btn{ 
-  background:#fff !important; 
-  color:#111827 !important; 
+  background: #fff !important; 
+  color: #111827 !important; 
   border-color: var(--border);
-  padding: clamp(6px, 1vw, 10px) clamp(10px, 2vw, 16px);
-  font-size: clamp(12px, 2vw, 15px);
+  padding: 0.625rem 1rem;
+  font-size: 0.9375rem;
   white-space: nowrap;
 }
 
 #whoami{ 
-  display:inline-block; 
-  max-width: min(45vw, 320px);
+  display: inline-block; 
+  max-width: 320px;
   white-space: nowrap; 
   overflow: hidden; 
   text-overflow: ellipsis;
-  font-size: clamp(12px, 2vw, 14px);
+  font-size: 0.875rem;
 }
 
-@media (max-width: 768px){
+/* Bootstrap Breakpoints */
+@media (max-width: 991.98px){
+  .brand img{
+    height: 40px;
+    width: 40px;
+  }
+  
+  .brand h1{
+    font-size: 1.125rem;
+  }
+  
+  #whoami{
+    max-width: 240px;
+  }
+}
+
+@media (max-width: 767.98px){
   .wrap{ 
     flex-wrap: nowrap !important;
-    padding: 6px 8px;
-    gap: 6px;
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
   }
   
   .brand{
     flex: 1 1 auto;
     min-width: 0;
+    gap: 0.5rem;
+  }
+  
+  .brand img{
+    height: 36px;
+    width: 36px;
   }
   
   .brand h1{
-    font-size: 14px;
+    font-size: 1rem;
   }
   
   .auth{ 
     flex: 0 0 auto;
-    gap: 4px;
+    gap: 0.375rem;
   }
   
   .auth .btn{
-    font-size: 12px;
-    padding: 6px 8px;
+    font-size: 0.875rem;
+    padding: 0.5rem 0.75rem;
   }
   
   #whoami{
@@ -246,13 +270,33 @@ header{
   #btn-use-location{
     min-width: 36px !important;
     min-height: 36px !important;
-    padding: 0 !important;
+    padding: 0.375rem !important;
   }
 }
 
-@media (max-width: 576px){
+@media (max-width: 575.98px){
   .wrap{ 
-    padding: 6px 8px;
+    padding: 0.5rem 0.625rem;
+    gap: 0.375rem;
+  }
+  
+  .brand img{
+    height: 32px;
+    width: 32px;
+  }
+  
+  .brand h1{
+    font-size: 0.875rem;
+  }
+  
+  .auth .btn{
+    font-size: 0.75rem;
+    padding: 0.375rem 0.5rem;
+  }
+  
+  #btn-use-location{
+    min-width: 32px !important;
+    min-height: 32px !important;
   }
 }
 
@@ -1870,29 +1914,35 @@ a:focus-visible{
 /* ==========
    Map Legend - Responsive
    ========== */
-.map-wrap{ position: relative; }
+.map-wrap{ 
+  position: relative; 
+  overflow: hidden;
+}
+
 .map-wrap .map-legend:not(:last-of-type){ 
-  display:none !important;
+  display: none !important;
 }
 
 .map-legend{
   position: absolute;
-  right: max(8px, env(safe-area-inset-right));
-  bottom: max(8px, env(safe-area-inset-bottom));
+  right: 1rem;
+  bottom: 1rem;
   left: auto;
   z-index: 600;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0.625rem;
   box-shadow: var(--shadow-sm);
-  padding: clamp(8px, 1.5vw, 12px);
-  font-size: var(--legend-font);
+  padding: 0.75rem;
+  font-size: 0.8125rem;
   line-height: 1.3;
-  max-width: var(--legend-w);
+  max-width: 320px;
   width: auto;
-  max-height: var(--legend-maxh);
-  overflow: auto;
+  min-width: 180px;
+  max-height: 44vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -1900,18 +1950,19 @@ a:focus-visible{
 }
 
 .map-legend .legend-title{
-  margin: 0 0 8px;
+  margin: 0 0 0.5rem;
   font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: 0.3px;
   color: var(--text);
+  white-space: nowrap;
 }
 
 .map-legend .legend-item{
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 0.5rem;
+  margin-bottom: 0.375rem;
   line-height: 1.2;
 }
 
@@ -1930,35 +1981,66 @@ a:focus-visible{
   font-size: 0.8rem;
   color: var(--text);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .map-legend::-webkit-scrollbar{ 
-  width: 10px; 
-  height: 10px;
+  width: 8px; 
+  height: 8px;
 }
 
 .map-legend::-webkit-scrollbar-thumb{ 
   background: #d1d5db; 
-  border-radius: 8px; 
-  border: 2px solid #fff;
+  border-radius: 0.5rem; 
+  border: 2px solid var(--surface);
 }
 
-.map-legend{ scrollbar-width: thin; }
+.map-legend{ 
+  scrollbar-width: thin; 
+  scrollbar-gutter: stable;
+}
 
-@media (max-width: 992px){
+/* Bootstrap Breakpoints */
+@media (max-width: 1399.98px){
   .map-legend{
-    padding: 6px 8px;
-    max-width: clamp(160px, 42%, 280px);
+    max-width: 280px;
+    right: 0.875rem;
+    bottom: 0.875rem;
+  }
+}
+
+@media (max-width: 1199.98px){
+  .map-legend{
+    max-width: 260px;
+    padding: 0.625rem 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
   }
   
   .map-legend .legend-title{
-    font-size: 0.85rem;
-    margin-bottom: 6px;
+    font-size: 0.875rem;
+  }
+  
+  .map-legend .legend-item span{
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 991.98px){
+  .map-legend{
+    max-width: 240px;
+    max-height: 40vh;
+    padding: 0.5rem 0.625rem;
+  }
+  
+  .map-legend .legend-title{
+    font-size: 0.8125rem;
+    margin-bottom: 0.375rem;
   }
   
   .map-legend .legend-item{
-    gap: 6px;
-    margin-bottom: 5px;
+    gap: 0.375rem;
+    margin-bottom: 0.3125rem;
   }
   
   .map-legend .legend-item svg{
@@ -1967,31 +2049,21 @@ a:focus-visible{
   }
   
   .map-legend .legend-item span{
-    font-size: 0.72rem;
+    font-size: 0.7rem;
   }
 }
 
-@media (max-width: 576px){
-  :root{
-    --legend-font: clamp(9px, 2.8vw, 11px);
-    --legend-w: clamp(150px, 65vw, 260px);
-    --legend-maxh: clamp(110px, 34vh, 38vh);
-  }
-  
+@media (max-width: 767.98px){
   .map-legend{
-    padding: 6px 8px;
-    right: 6px; 
-    bottom: 6px;
+    max-width: 220px;
+    max-height: 38vh;
+    right: 0.625rem;
+    bottom: 0.625rem;
+    padding: 0.5rem;
   }
   
   .map-legend .legend-title{
-    font-size: 0.8rem;
-    margin-bottom: 5px;
-  }
-  
-  .map-legend .legend-item{
-    gap: 6px;
-    margin-bottom: 4px;
+    font-size: 0.75rem;
   }
   
   .map-legend .legend-item svg{
@@ -2000,12 +2072,48 @@ a:focus-visible{
   }
   
   .map-legend .legend-item span{
-    font-size: 0.68rem;
+    font-size: 0.65rem;
   }
 }
 
-@media (min-width: 1100px){
-  :root{ --legend-w: clamp(200px, 28%, 320px); }
+@media (max-width: 575.98px){
+  .map-legend{
+    max-width: min(200px, 60vw);
+    max-height: 35vh;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    min-width: 160px;
+  }
+  
+  .map-legend .legend-title{
+    font-size: 0.7rem;
+    margin-bottom: 0.3125rem;
+  }
+  
+  .map-legend .legend-item{
+    gap: 0.3125rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  .map-legend .legend-item svg{
+    width: 14px;
+    height: 20px;
+  }
+  
+  .map-legend .legend-item span{
+    font-size: 0.625rem;
+  }
+}
+
+@media (max-width: 374.98px){
+  .map-legend{
+    max-width: min(180px, 65vw);
+    max-height: 32vh;
+    right: 0.375rem;
+    bottom: 0.375rem;
+    min-width: 140px;
+  }
 }
 
 .leaflet-control .info{ display:none !important; }
