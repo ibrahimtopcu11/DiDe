@@ -4863,6 +4863,9 @@ async function logout(){
   removeDownloadIfAny();
   __eventsExportCtrlAdded = false;
   
+  document.documentElement.style.overflow = '';
+  document.body.style.overflow = '';
+  
   try {
     if (map) {
       const lat = Number(APP_CONFIG.mapInitialLat);
