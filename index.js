@@ -35,7 +35,7 @@ const QFIELD_INGEST_INTERVAL_MS = parseInt(process.env.QFIELD_INGEST_INTERVAL_MS
 
 
 
-const FRONTEND_ORIGIN = process.env.CORS_ORIGIN || '';
+const FRONTEND_ORIGIN = (process.env.CORS_ORIGIN || '').trim();
 const FRONTEND_ORIGINS = FRONTEND_ORIGIN.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || 'lax').toLowerCase();
 const COOKIE_SECURE =
