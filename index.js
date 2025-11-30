@@ -36,7 +36,7 @@ const QFIELD_INGEST_INTERVAL_MS = parseInt(process.env.QFIELD_INGEST_INTERVAL_MS
 
 
 const FRONTEND_ORIGIN = process.env.CORS_ORIGIN || '';
-const FRONTEND_ORIGINS = FRONTEND_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+const FRONTEND_ORIGINS = FRONTEND_ORIGIN.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || 'lax').toLowerCase();
 const COOKIE_SECURE =
   String(process.env.COOKIE_SECURE || (process.env.NODE_ENV === 'production')).toLowerCase() === 'true';
@@ -130,21 +130,24 @@ app.use(
       if (!origin) return cb(null, true);
 
       const allowList = FRONTEND_ORIGINS;
-      const normalizedOrigin = String(origin).replace(/\/$/, '');
+      const normalizedOrigin = String(origin).replace(/\/$/, '').toLowerCase();
 
       const isAllowed = allowList.some((o) => {
-        const norm = String(o).replace(/\/$/, '');
+        const norm = String(o).replace(/\/$/, '').toLowerCase();
         return norm === normalizedOrigin;
       });
-
 
       if (!allowList.length) {
         console.warn('[CORS] FRONTEND_ORIGINS boş, geçici olarak tüm originlere izin veriliyor:', origin);
         return cb(null, true);
       }
 
-      if (isAllowed) return cb(null, true);
+      if (isAllowed) {
+        console.log('[CORS] İzin verilen origin:', origin);
+        return cb(null, true);
+      }
 
+      console.error('[CORS] Engellenen origin:', origin, '| İzin verilen listesi:', allowList);
       return cb(new Error('CORS engellendi: ' + origin), false);
     },
     credentials: true,
