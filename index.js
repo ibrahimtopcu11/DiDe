@@ -35,7 +35,8 @@ const QFIELD_INGEST_INTERVAL_MS = parseInt(process.env.QFIELD_INGEST_INTERVAL_MS
 
 
 
-const FRONTEND_ORIGIN = process.env.CORS_ORIGIN;
+const FRONTEND_ORIGIN = process.env.CORS_ORIGIN || '';
+const FRONTEND_ORIGINS = FRONTEND_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || 'lax').toLowerCase();
 const COOKIE_SECURE =
   String(process.env.COOKIE_SECURE || (process.env.NODE_ENV === 'production')).toLowerCase() === 'true';
@@ -127,8 +128,23 @@ app.use(
   cors({
     origin: function (origin, cb) {
       if (!origin) return cb(null, true);
-      const allowList = FRONTEND_ORIGIN.split(',').map((s) => s.trim());
-      if (allowList.includes(origin)) return cb(null, true);
+
+      const allowList = FRONTEND_ORIGINS;
+      const normalizedOrigin = String(origin).replace(/\/$/, '');
+
+      const isAllowed = allowList.some((o) => {
+        const norm = String(o).replace(/\/$/, '');
+        return norm === normalizedOrigin;
+      });
+
+
+      if (!allowList.length) {
+        console.warn('[CORS] FRONTEND_ORIGINS boş, geçici olarak tüm originlere izin veriliyor:', origin);
+        return cb(null, true);
+      }
+
+      if (isAllowed) return cb(null, true);
+
       return cb(new Error('CORS engellendi: ' + origin), false);
     },
     credentials: true,
