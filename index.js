@@ -2624,27 +2624,31 @@ app.post('/api/export/geojson', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'olay_yok', message: getErrorMessage(req, 'olay_yok') });
     }
     
-    console.log('[GeoJSON Export] Bulunan olay sayısı:', rows.length);
     
-    const features = rows.map(row => ({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: [parseFloat(row.boylam), parseFloat(row.enlem)]
-      },
-      properties: {
-        olay_id: row.olay_id,
-        olay_turu_id: row.olay_turu,
-        olay_turu_adi: row.olay_turu_adi || 'Belirtilmemiş',
-        olay_turu_good: row.olay_turu_good || false,
-        aciklama: row.aciklama || '',
-        photo_count: Array.isArray(row.photo_urls) ? row.photo_urls.length : (row.photo_urls ? JSON.parse(row.photo_urls).length : 0),
-        video_count: Array.isArray(row.video_urls) ? row.video_urls.length : (row.video_urls ? JSON.parse(row.video_urls).length : 0),
-        created_by: row.created_by_name || '-',
-        created_by_id: row.created_by_id,
-        created_at: row.created_at
-      }
-    }));
+    const features = rows.map(row => {
+      const photoUrls = parseJsonText(row.photo_urls);
+      const videoUrls = parseJsonText(row.video_urls);
+      
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [parseFloat(row.boylam), parseFloat(row.enlem)]
+        },
+        properties: {
+          olay_id: row.olay_id,
+          olay_turu_id: row.olay_turu,
+          olay_turu_adi: row.olay_turu_adi || 'Belirtilmemiş',
+          olay_turu_good: row.olay_turu_good || false,
+          aciklama: row.aciklama || '',
+          photo_urls: photoUrls.join(', '),
+          video_urls: videoUrls.join(', '),
+          created_by: row.created_by_name || '-',
+          created_by_id: row.created_by_id,
+          created_at: row.created_at
+        }
+      };
+    });
     
     const geojson = {
       type: 'FeatureCollection',
