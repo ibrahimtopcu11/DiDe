@@ -352,11 +352,6 @@ function placeMicIntoMediaBar(){
     locBtn.style.justifyContent = 'center';
     locBtn.onclick = () => {
       geoFindMeToggle();
-      const olayCard = qs('#olay-card');
-      if (olayCard && currentUser && currentUser.role === 'user') {
-        show(olayCard);
-        ensureBackButton();
-      }
     };
     
     videoBtn.insertAdjacentElement('afterend', locBtn);
@@ -3812,6 +3807,9 @@ function geoFindMeToggle(){
     return; 
   }
   geoFindMeStart();
+  
+  if (currentUser && currentUser.role === 'user') {
+  }
 }
 
 function geoFindMeStart() {
@@ -3834,6 +3832,23 @@ function geoFindMeStart() {
 
       map.setView(ll, Math.max(map.getZoom(), 17), { animate:true });
       startLiveLocation();
+      
+      if (currentUser && currentUser.role === 'user') {
+        setTimeout(() => {
+          const olayCard = qs('#olay-card');
+          if (olayCard) {
+            show(olayCard);
+            ensureBackButton();
+            
+            const mapEl = document.getElementById('map');
+            if (mapEl) {
+              mapEl.classList.add('blur-background');
+            }
+            
+            pushOverlayState('olay-card');
+          }
+        }, 500);
+      }
     },
     () => { setLocateUI(false); },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
@@ -5210,6 +5225,10 @@ function attachMapClickForLoggedIn(){
   try { map?.off('click'); } catch {}
   if (!map) return;
   
+  if (currentUser && currentUser.role === 'user') {
+    return;
+  }
+  
   map.on('click', (e) => {
     stopLiveLocation(); 
     
@@ -5234,20 +5253,18 @@ function attachMapClickForLoggedIn(){
         .bindPopup(t('selectedLocation'));
     }
     
-    if (currentUser && currentUser.role === 'user') {
-      const olayCard = qs('#olay-card');
-      if (olayCard) {
-        show(olayCard);
-        ensureBackButton();
-        
-        const mapEl = document.getElementById('map');
-        if (mapEl) {
-          mapEl.classList.add('blur-background');
-        }
-        pushOverlayState('olay-card');
-        
-        ensureMapLegend(map);
+    const olayCard = qs('#olay-card');
+    if (olayCard) {
+      show(olayCard);
+      ensureBackButton();
+      
+      const mapEl = document.getElementById('map');
+      if (mapEl) {
+        mapEl.classList.add('blur-background');
       }
+      pushOverlayState('olay-card');
+      
+      ensureMapLegend(map);
     }
   });
 }
@@ -5307,15 +5324,6 @@ window.addEventListener('popstate', (event) => {
     btn.style.display = 'none';
     btn.onclick = () => {
       geoFindMeToggle();
-      if (currentUser && currentUser.role === 'user') {
-        const olayCard = qs('#olay-card');
-        if (olayCard) {
-          show(olayCard);
-          ensureBackButton();
-          const mapEl = document.getElementById('map');
-          if (mapEl) mapEl.classList.add('blur-background');
-        }
-      }
     };
     
     const themeBtn = qs('#btn-theme-toggle');
