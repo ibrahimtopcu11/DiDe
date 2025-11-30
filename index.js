@@ -136,20 +136,55 @@ app.use(
       }
 
       const allowList = FRONTEND_ORIGINS;
-      const normalizedOrigin = String(origin).replace(/\/$/, '').toLowerCase();
+
+      function normalizeOriginUrl(u) {
+        try {
+          const url = new URL(u);
+          const isDefaultPort =
+            (url.protocol === 'http:' && (!url.port || url.port === '80')) ||
+            (url.protocol === 'https:' && (!url.port || url.port === '443'));
+          const portPart = isDefaultPort ? '' : (url.port ? `:${url.port}` : '');
+          return `${url.protocol}//${url.hostname}${portPart}`.toLowerCase();
+        } catch {
+          return String(u || '').replace(/\/$/, '').toLowerCase();
+        }
+      }
+
+      const normalizedOrigin = normalizeOriginUrl(origin);
+      let originHost = null;
+      try {
+        originHost = new URL(origin).hostname.toLowerCase();
+      } catch {
+        originHost = null;
+      }
 
       console.log('[CORS] Gelen origin:', origin);
       console.log('[CORS] Normalize edilmiş:', normalizedOrigin);
       console.log('[CORS] İzin verilen liste:', allowList);
+
       if (!allowList.length) {
         console.warn('[CORS] FRONTEND_ORIGINS boş, tüm originlere izin veriliyor');
         return cb(null, true);
       }
 
       const isAllowed = allowList.some((o) => {
-        const norm = String(o).replace(/\/$/, '').toLowerCase();
+        const norm = normalizeOriginUrl(o);
         console.log('[CORS] Karşılaştırma:', normalizedOrigin, '===', norm, '?', norm === normalizedOrigin);
-        return norm === normalizedOrigin;
+        if (norm === normalizedOrigin) return true;
+
+        // Ek güvenlik + esneklik: sadece host eşleşmesine de izin ver
+        if (originHost) {
+          try {
+            const allowedHost = new URL(o).hostname.toLowerCase();
+            if (allowedHost === originHost) {
+              console.log('[CORS] Host eşleşmesi ile izin verildi:', originHost, '===', allowedHost);
+              return true;
+            }
+          } catch {
+            // URL parse edilemezse host bazlı kontrolü atla
+          }
+        }
+        return false;
       });
 
       if (isAllowed) {
