@@ -37,6 +37,8 @@ const QFIELD_INGEST_INTERVAL_MS = parseInt(process.env.QFIELD_INGEST_INTERVAL_MS
 
 const FRONTEND_ORIGIN = (process.env.CORS_ORIGIN || '').trim();
 const FRONTEND_ORIGINS = FRONTEND_ORIGIN.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+console.log('[CORS] FRONTEND_ORIGIN:', JSON.stringify(FRONTEND_ORIGIN));
+console.log('[CORS] FRONTEND_ORIGINS:', JSON.stringify(FRONTEND_ORIGINS));
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || 'lax').toLowerCase();
 const COOKIE_SECURE =
   String(process.env.COOKIE_SECURE || (process.env.NODE_ENV === 'production')).toLowerCase() === 'true';
@@ -127,27 +129,36 @@ const MAIL_FROM = `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAI
 app.use(
   cors({
     origin: function (origin, cb) {
-      if (!origin) return cb(null, true);
+      // Origin yoksa (aynı domain) izin ver
+      if (!origin) {
+        console.log('[CORS] Origin yok (same-origin), izin veriliyor');
+        return cb(null, true);
+      }
 
       const allowList = FRONTEND_ORIGINS;
       const normalizedOrigin = String(origin).replace(/\/$/, '').toLowerCase();
 
+      console.log('[CORS] Gelen origin:', origin);
+      console.log('[CORS] Normalize edilmiş:', normalizedOrigin);
+      console.log('[CORS] İzin verilen liste:', allowList);
+      if (!allowList.length) {
+        console.warn('[CORS] FRONTEND_ORIGINS boş, tüm originlere izin veriliyor');
+        return cb(null, true);
+      }
+
       const isAllowed = allowList.some((o) => {
         const norm = String(o).replace(/\/$/, '').toLowerCase();
+        console.log('[CORS] Karşılaştırma:', normalizedOrigin, '===', norm, '?', norm === normalizedOrigin);
         return norm === normalizedOrigin;
       });
 
-      if (!allowList.length) {
-        console.warn('[CORS] FRONTEND_ORIGINS boş, geçici olarak tüm originlere izin veriliyor:', origin);
-        return cb(null, true);
-      }
-
       if (isAllowed) {
-        console.log('[CORS] İzin verilen origin:', origin);
+        console.log('[CORS] ✓ İzin verilen origin:', origin);
         return cb(null, true);
       }
 
-      console.error('[CORS] Engellenen origin:', origin, '| İzin verilen listesi:', allowList);
+      console.error('[CORS] ✗ Engellenen origin:', origin);
+      console.error('[CORS] İzin verilen liste:', allowList);
       return cb(new Error('CORS engellendi: ' + origin), false);
     },
     credentials: true,
