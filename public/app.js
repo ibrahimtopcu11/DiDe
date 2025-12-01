@@ -3847,7 +3847,7 @@ function geoFindMeStart() {
             
             pushOverlayState('olay-card');
           }
-        }, 500);
+        }, 1000);
       }
     },
     () => { setLocateUI(false); },

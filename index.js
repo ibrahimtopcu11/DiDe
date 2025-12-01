@@ -129,9 +129,7 @@ const MAIL_FROM = `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_FROM_EMAI
 app.use(
   cors({
     origin: function (origin, cb) {
-      // Origin yoksa (aynı domain) izin ver
       if (!origin) {
-        console.log('[CORS] Origin yok (same-origin), izin veriliyor');
         return cb(null, true);
       }
 
@@ -158,42 +156,30 @@ app.use(
         originHost = null;
       }
 
-      console.log('[CORS] Gelen origin:', origin);
-      console.log('[CORS] Normalize edilmiş:', normalizedOrigin);
-      console.log('[CORS] İzin verilen liste:', allowList);
-
       if (!allowList.length) {
-        console.warn('[CORS] FRONTEND_ORIGINS boş, tüm originlere izin veriliyor');
         return cb(null, true);
       }
 
       const isAllowed = allowList.some((o) => {
         const norm = normalizeOriginUrl(o);
-        console.log('[CORS] Karşılaştırma:', normalizedOrigin, '===', norm, '?', norm === normalizedOrigin);
         if (norm === normalizedOrigin) return true;
 
-        // Ek güvenlik + esneklik: sadece host eşleşmesine de izin ver
         if (originHost) {
           try {
             const allowedHost = new URL(o).hostname.toLowerCase();
             if (allowedHost === originHost) {
-              console.log('[CORS] Host eşleşmesi ile izin verildi:', originHost, '===', allowedHost);
               return true;
             }
           } catch {
-            // URL parse edilemezse host bazlı kontrolü atla
           }
         }
         return false;
       });
 
       if (isAllowed) {
-        console.log('[CORS] ✓ İzin verilen origin:', origin);
         return cb(null, true);
       }
 
-      console.error('[CORS] ✗ Engellenen origin:', origin);
-      console.error('[CORS] İzin verilen liste:', allowList);
       return cb(new Error('CORS engellendi: ' + origin), false);
     },
     credentials: true,

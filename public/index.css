@@ -39,7 +39,7 @@
   --legend-maxh: clamp(120px, 38vh, 44vh);
 }
 
-/* Dark Theme */
+
 :root.theme-dark{
   --maxw: 100%;
   --bg: #0f172a;
@@ -122,7 +122,7 @@ body.public-fullmap{
   height: 100vh;
 }
 
-/* Harita Blur Efekti (Desktop) */
+
 #map.blur-background {
   filter: blur(4px);
   transition: filter 0.3s ease;
@@ -363,7 +363,7 @@ header{
   filter: none !important;
   opacity: 1 !important;
 }
-/* Mobil: Tam ekran modal */
+/* Mobil: Tam ekran */
 @media (max-width: 576px){
   #login-card,
   #register-card,
@@ -378,7 +378,7 @@ header{
     padding: clamp(60px, 10vh, 80px) clamp(16px, 4vw, 24px) clamp(20px, 4vh, 32px);
   }
 }
-/* Dark Mode - Login/Register/Forgot Cards */
+
 :root.theme-dark #login-card,
 :root.theme-dark #register-card,
 :root.theme-dark #forgot-card{
@@ -410,7 +410,7 @@ header{
   color: var(--muted);
 }
 /* ==========
-   Kullanıcı Girişi: Tam Ekran Harita + Olay Formu Modal
+   Kullanıcı Girişi: Tam Ekran Harita + Olay Formu
    ========== */
 body.role-user #map{
   position: fixed !important;
@@ -449,7 +449,7 @@ body.role-user #olay-card.hidden{
   display: none !important;
 }
 
-/* Mobil: Form tam ekran */
+
 @media (max-width: 576px){
   body.role-user #olay-card{
     width: 100vw;
@@ -463,7 +463,7 @@ body.role-user #olay-card.hidden{
   }
 }
 
-/* Konumumu Kullan Butonu - Responsive Konumlandırma */
+/* Konumumu Kullan Butonu */
 .map-floating-left{
   position: fixed;
   top: calc(var(--header-h) + clamp(12px, 2vh, 20px));
@@ -490,7 +490,7 @@ body.role-user #olay-card.hidden{
     gap: clamp(8px, 2vw, 12px);
   }
 }
-/* Dark Mode - Event Form Card */
+
 :root.theme-dark #olay-card{
   background: var(--surface);
   color: var(--text);
@@ -545,7 +545,7 @@ body.role-user #olay-card.hidden{
   border-color: var(--primary-700) !important;
 }
 
-/* Icon Butonlar */
+
 .icon-btn{
   display: inline-flex;
   align-items: center;
@@ -738,9 +738,7 @@ body.supervisor-mode-form #olay-card{
   display: none !important;
 }
 
-/* ==========
-   Olay Tablosu + Alt Harita (Supervisor/Admin)
-   ========== */
+
 .events-map-wrap{
   position: relative;
   margin-top: 14px;
@@ -757,23 +755,21 @@ body.supervisor-mode-form #olay-card{
   width: 100%;
 }
 
-/* Responsive: Tablet */
+
 @media (max-width: 992px){
   #events-map{
     height: clamp(240px, 35vh, 480px);
   }
 }
 
-/* Responsive: Mobil */
+
 @media (max-width: 576px){
   #events-map{
     height: clamp(220px, 32vh, 420px);
   }
 }
 
-/* ==========
-   Harita
-   ========== */
+
 #map{
   height: var(--map-h);
   min-height: 420px;
@@ -812,7 +808,7 @@ body.sheet-open #map{
 .leaflet-top.leaflet-right .leaflet-bar a[title*="GeoJSON"] {
   display: none !important;
 }
-/* Dark Mode - Leaflet Popups */
+
 :root.theme-dark .leaflet-popup-content-wrapper{
   background: var(--surface);
   color: var(--text);
@@ -1040,9 +1036,7 @@ input:-webkit-autofill:focus{
   display: none !important;
 }
 
-/* ==========
-   Medya Bar (Foto/Video/Mic İkonları)
-   ========== */
+
 #media-bar{
   display: flex;
   gap: clamp(8px, 1.5vw, 12px);
@@ -1173,7 +1167,7 @@ body.supervisor-mode-admin #olay-card{
   border-radius:8px; 
   border:2px solid #fff;
 }
-/* Dark Mode - Admin Panel */
+
 :root.theme-dark #admin-card{
   background: var(--surface);
   color: var(--text);
@@ -1200,9 +1194,7 @@ body.supervisor-mode-admin #olay-card{
   border-color: var(--surface);
 }
 
-/* ==========
-   Tablo
-   ========== */
+
 table{
   width:100%;
   border-collapse: collapse;
@@ -1265,9 +1257,7 @@ td{
   word-break: break-word;
   overflow-wrap: anywhere;
 }
-/* ==========
-   Tablo Export Butonu
-   ========== */
+
 .table-export-btn{
   display: inline-flex !important;
   align-items: center;
@@ -1313,9 +1303,7 @@ td{
   filter: none !important;
   opacity: 1 !important;
 }
-/* ==========
-   Filtreleme
-   ========== */
+
 .filter-icon{
   cursor: pointer;
   margin-left: 4px;
@@ -1407,7 +1395,7 @@ td{
   max-height: none;
   overflow-y: visible;
 }
-/* Dark Mode - Filter Dropdown */
+
 :root.theme-dark .filter-dropdown{
   background: var(--surface);
   border-color: var(--border);
@@ -1432,9 +1420,7 @@ td{
   background: #475569;
   border-color: var(--surface);
 }
-/* ==========
-   Tab Navigation
-   ========== */
+
 .tab-nav{
   display:flex; 
   gap:4px; 
@@ -1464,7 +1450,7 @@ td{
 .tab-btn:hover{ color:var(--text); }
 .tab-content{ display:none; }
 .tab-content.active{ display:block; }
-/* Dark Mode - Tabs */
+
 :root.theme-dark .tab-nav{
   border-bottom-color: var(--border);
 }
@@ -1480,9 +1466,7 @@ td{
 :root.theme-dark .tab-btn:hover{
   color: var(--text);
 }
-/* ==========
-   Pagination
-   ========== */
+
 .pagination{
   display:flex; 
   align-items:center; 
@@ -1530,7 +1514,7 @@ td{
   color:#fff; 
   border-color:var(--primary);
 }
-/* Dark Mode - Pagination */
+
 :root.theme-dark .pagination{
   border-top-color: var(--border);
 }
@@ -1573,16 +1557,14 @@ td{
   }
 }
 
-/* ==========
-   Thumbnail Grid
-   ========== */
+
 .thumb-grid{
   display:grid;
   grid-template-columns: repeat(auto-fill, minmax(clamp(90px, 18vw, 120px), 1fr));
   gap: clamp(6px, 1.2vw, 10px);
   margin-top:6px;
 }
-/* Dark Mode - Tables */
+
 :root.theme-dark table{
   background: var(--surface);
   color: var(--text);
@@ -1608,9 +1590,8 @@ td{
   border-color: var(--surface);
 }
 
-/* ==================== FORM İÇİ MEDYA DÜZENİ ==================== */
 
-/* Fotoğraf SOL, Video SAĞ */
+
 #photo-list,
 #video-list {
   display: inline-block;
@@ -1620,7 +1601,7 @@ td{
 #photo-list {
   margin-right: 16px;
 }
-/* Scroll container */
+
 .media-scroll-container {
   scrollbar-width: thin;
   scrollbar-color: #d1d5db transparent;
@@ -1634,13 +1615,13 @@ td{
   border-radius: 6px;
   border: 1px solid #fff;
 }
-/* Dikey grid (tek sütun) */
+
 .media-grid-vertical {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-/* Thumbnail wrapper - Sil butonu için relative (ÖNEMLİ) */
+
 .media-thumb-wrapper {
   position: relative;
   display: block;
@@ -1658,7 +1639,7 @@ td{
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
-/* Thumbnail link - block yaparak çarpıyı taşımamasını sağla */
+
 .media-thumb {
   display: block;
   width: 100%;
@@ -1673,7 +1654,7 @@ td{
   border-radius: 6px;
   display: block;
 }
-/* Sil butonu (X) - HER KARENIN sağ üstünde */
+
 .media-remove-btn {
   position: absolute;
   top: 6px;
@@ -1701,7 +1682,7 @@ td{
   transform: scale(1.1);
   box-shadow: 0 3px 8px rgba(0,0,0,0.4);
 }
-/* Mobil: Alt alta düzen */
+
 @media (max-width: 576px) {
   #photo-list,
   #video-list {
@@ -1748,7 +1729,7 @@ td{
   border-radius:6px; 
   display:block;
 }
-/* Dark Mode - Media Thumbnails */
+
 :root.theme-dark .media-thumb-wrapper{
   border-color: var(--border);
   background: var(--surface);
@@ -1763,9 +1744,7 @@ td{
   border-color: var(--border);
   background: var(--surface);
 }
-/* ==========
-   Modal
-   ========== */
+
 .modal{ 
   position:fixed; 
   inset:0; 
@@ -1818,7 +1797,7 @@ td{
 body.modal-open{
   overflow: hidden !important;
 }
-/* Dark Mode - Modals */
+
 :root.theme-dark .modal .box{
   background: var(--surface);
   border-color: var(--border);
@@ -1829,9 +1808,7 @@ body.modal-open{
 :root.theme-dark .modal .box h4{
   color: var(--text);
 }
-/* ==========
-   Toast
-   ========== */
+
 #toast-root{
   position: fixed; 
   top: calc(var(--header-h) + 12px);
@@ -1860,9 +1837,7 @@ body.modal-open{
 .toast.success{ background:#065f46; }
 .toast.error{ background:#7f1d1d; }
 
-/* ==========
-   Yardımcılar
-   ========== */
+
 .hidden{ display:none !important; }
 
 a{ 
@@ -1894,7 +1869,7 @@ a:focus-visible{
   background: var(--border-soft); 
   margin:10px 0;
 }
-/* Dark Mode - Cards & Info */
+
 :root.theme-dark .card{
   background: var(--surface);
   border-color: var(--border);
@@ -1914,9 +1889,7 @@ a:focus-visible{
 :root.theme-dark .sep{
   background: var(--border);
 }
-/* ==========
-   Map Legend - Responsive
-   ========== */
+
 .map-wrap{ 
   position: relative; 
   overflow: hidden;
@@ -2013,7 +1986,7 @@ a:focus-visible{
   scrollbar-gutter: stable;
 }
 
-/* Bootstrap Breakpoints */
+
 @media (max-width: 1399.98px){
   .map-legend{
     max-width: clamp(130px, 32vw, 175px);
@@ -2064,7 +2037,7 @@ a:focus-visible{
 
 .leaflet-control .info{ display:none !important; }
 
-/* Dark Mode - Map Legend */
+
 :root.theme-dark .map-legend{
   background: rgba(30, 41, 59, 0.98);
   border-color: var(--border);
@@ -2083,9 +2056,7 @@ a:focus-visible{
   background: #475569;
   border-color: var(--surface);
 }
-/* ==========
-   Cluster İkonları 
-   ========== */
+
 .custom-cluster-wrap { background: transparent; }
 
 .custom-cluster {
@@ -2118,10 +2089,6 @@ a:focus-visible{
 }
 
 
-
-/* ==========
-   Print Mode
-   ========== */
 @media print{
   header, .auth, .stack, .btn, .eye-btn{ 
     display:none !important;
@@ -2130,9 +2097,7 @@ a:focus-visible{
   .card{ border: none; box-shadow: none; }
 }
 
-/* ==========
-   Mobile Sheet 
-   ========== */
+
 @media (max-width: 1100px){
   .sheet{
     position: fixed; 
@@ -2167,9 +2132,7 @@ a:focus-visible{
     -webkit-overflow-scrolling: touch;
   }
 }
-/* ==========
-   Yeni Olay Türü Ekleme - Yönetim Paneli
-   ========== */
+
 #types-tab .inline,
 #types-tab th:has(#new-type-name),
 #types-tab th:has(#btn-add-type) {
