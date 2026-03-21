@@ -111,7 +111,7 @@ ensureDbConnectionWithRetry()
   });
 
 
-/* ===================== SMTP (opsiyonel) ===================== */
+/* ===================== SMTP ===================== */
 let transporter = null;
 const CAN_SEND_MAIL = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && (process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER));
 if (CAN_SEND_MAIL) {
@@ -694,7 +694,7 @@ function normalizeIncomingToUrlArray(input, kind /* 'photo'|'video' */) {
   return Array.from(new Set(out));
 }
 
-// TEXT(JSON) yardımcıları
+
 function toJsonText(arr) {
   try {
     return JSON.stringify(Array.isArray(arr) ? arr : []);
@@ -2783,4 +2783,3 @@ const shutdown = async () => {
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-
