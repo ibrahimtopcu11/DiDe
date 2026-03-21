@@ -161,7 +161,7 @@ setup_pm2() {
   pm2 start index.js --name "$PROJECT_NAME"
   pm2 status
   pm2 save
-  sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu
+  sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u dide --hp /home/ubuntu
 }
 
 setup_nginx() {
