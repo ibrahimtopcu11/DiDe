@@ -1,0 +1,26 @@
+[info] Computing recursive bisection[0m
+[info] Loaded compressed node based graph: 5806 edges, 10153 nodes[0m
+[info]  running partition: 128 1.2 0.25 10 1000 # max_cell_size balance boundary cuts small_component_size[0m
+[info] Found 7991 SCC (1 large, 7990 small)[0m
+[info] SCC run took: 0.000551789s[0m
+[info] Full bisection done in 0.012278s[0m
+[info] Loaded node based graph to edge based graph mapping[0m
+[info] Loaded edge based graph for mapping partition ids: 23730 edges, 5806 nodes[0m
+[info] Fixed 2 unconnected nodes[0m
+[info] Edge-based-graph annotation:[0m
+[info]   level 1 #cells 23 bit size 5[0m
+[info]   level 2 #cells 3 bit size 2[0m
+[info]   level 3 #cells 1 bit size 1[0m
+[info]   level 4 #cells 1 bit size 1[0m
+[info] Renumbered data in 0.197091 seconds[0m
+[info] MultiLevelPartition constructed in 0.001193 seconds[0m
+[info] CellStorage constructed in 0.001209 seconds[0m
+[info] MLD data writing took 0.061602 seconds[0m
+[info] Cells statistics per level[0m
+[info] Level 1 #cells 23 #boundary nodes 465, sources: avg. 13, destinations: avg. 20, entries: 9167 (73336 bytes)[0m
+[info] Level 2 #cells 3 #boundary nodes 39, sources: avg. 9, destinations: avg. 12, entries: 528 (4224 bytes)[0m
+[info] Level 3 #cells 1 #boundary nodes 0, sources: avg. 0, destinations: avg. 0, entries: 0 (0 bytes)[0m
+[info] Level 4 #cells 1 #boundary nodes 0, sources: avg. 0, destinations: avg. 0, entries: 0 (0 bytes)[0m
+[info] Bisection took 0.35483 seconds.[0m
+[info] RAM: peak bytes used: 17801216[0m
+

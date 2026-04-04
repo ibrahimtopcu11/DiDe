@@ -1,0 +1,342 @@
+# Kullanim:
+#   1) node fetch-test-users.js
+#   2) npm start (ayri terminalde)
+#   3) artillery run load-test.yml --output results.json
+#   4) artillery report results.json --output rapor.html
+# ============================================================================
+
+config:
+  target: "{{ $processEnvironment.TARGET_URL }}"
+
+  phases:
+    - name: "Isinma Fazi"
+      duration: "{{ $processEnvironment.RAMP_DURATION_SEC }}"
+      arrivalRate: 1
+      rampTo: "{{ $processEnvironment.TOTAL_VU_PER_SEC }}"
+
+    - name: "Sabit Yuk Fazi"
+      duration: "{{ $processEnvironment.TEST_DURATION_SEC }}"
+      arrivalRate: "{{ $processEnvironment.TOTAL_VU_PER_SEC }}"
+
+    - name: "Soguma Fazi"
+      duration: 10
+      arrivalRate: "{{ $processEnvironment.TOTAL_VU_PER_SEC }}"
+      rampTo: 1
+
+  payload:
+    - path: "./test-users-supervisor.csv"
+      fields:
+        - "sv_username"
+        - "sv_password"
+      order: random
+      skipHeader: true
+      loadAll: true
+      name: "supervisorData"
+
+    - path: "./test-users-uzman.csv"
+      fields:
+        - "uz_username"
+        - "uz_password"
+      order: random
+      skipHeader: true
+      loadAll: true
+      name: "uzmanData"
+
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+  plugins:
+    metrics-by-endpoint: {}
+    ensure: {}
+
+  ensure:
+    thresholds:
+      - http.response_time.p95: 3000
+      - http.response_time.p99: 5000
+    conditions:
+      - expression: "http.codes.500 < 20"
+        strict: true
+
+  processor: "./processor.js"
+
+# ===========================================================================
+# DOGRULANMIS API ENDPOINT TABLOSU (index.js satir numaralari ile)
+# ===========================================================================
+# POST   /api/auth/login      Yok         L:1491  Giris (usernameOrEmail+password)
+# GET    /api/me              requireAuth L:1581  Kullanici bilgisi
+# GET    /api/olaylar         requireAuth L:1742  Olay turleri
+# GET    /api/olaylar_tum     tryAuth     L:1757  Tum olaylar (anonim olabilir)
+# POST   /api/submit_olay     requireAuth L:1894  Yeni olay olustur
+# PATCH  /api/olay/:id        requireAuth L:1943  Olay guncelle (SUP YASAK!)
+# DELETE /api/olay/:id        requireAuth L:2016  Olay sil
+# GET    /api/admin/users     adminOnly   L:2258  Kullanici listesi
+# GET    /api/config          Yok         L:1344  Site yapilandirmasi
+# GET    /health              Yok         L:2759  Saglik kontrolu
+# ===========================================================================
+
+scenarios:
+
+  # SENARYO 1: SUPERVISOR (%20)
+  - name: "Supervisor - Giris + Sorgulama"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            usernameOrEmail: "{{ sv_username }}"
+            password: "{{ sv_password }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+            - json: "$.user.id"
+              as: "userId"
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+      - think: 1
+      - get:
+          url: "/api/me"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/olaylar"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/olaylar_tum"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/admin/users"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/olaylar_tum"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+
+  # SENARYO 2: VATANDAS (%35) - sadece GET
+  - name: "Vatandas - Giris Yapmadan Sadece Okuma"
+    weight: 35
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/config"
+          expect:
+            - statusCode: 200
+      - think: 2
+      - get:
+          url: "/api/olaylar_tum"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+      - think: 3
+      - get:
+          url: "/api/olaylar_tum"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+      - think: 2
+      - get:
+          url: "/api/olaylar_tum"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+
+  # SENARYO 3: UZMAN (%25) - Tam CRUD
+  - name: "Uzman - Giris + Tam CRUD"
+    weight: 25
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            usernameOrEmail: "{{ uz_username }}"
+            password: "{{ uz_password }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+            - json: "$.user.id"
+              as: "userId"
+            - json: "$.user.username"
+              as: "userName"
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+      - think: 1
+      - get:
+          url: "/api/olaylar_tum"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/olaylar"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          capture:
+            - json: "$[0].o_id"
+              as: "olayTuruId"
+              strict: false
+          expect:
+            - statusCode: 200
+      - think: 1
+      - post:
+          url: "/api/submit_olay"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            enlem: 39.9334
+            boylam: 32.8597
+            olay_turu: "{{ olayTuruId }}"
+            aciklama: "Artillery yuk testi - {{ userName }}"
+          capture:
+            - json: "$.olay_id"
+              as: "createdOlayId"
+              strict: false
+          afterResponse: "saveCreatedOlayId"
+          expect:
+            - statusCode: 200
+            - hasProperty: "olay_id"
+      - think: 2
+      - patch:
+          url: "/api/olay/{{ createdOlayId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            aciklama: "Artillery - GUNCELLENDI ({{ userName }})"
+            enlem: 39.9400
+            boylam: 32.8600
+          ifTrue: "createdOlayId"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/olaylar_tum"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - delete:
+          url: "/api/olay/{{ createdOlayId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          ifTrue: "createdOlayId"
+          expect:
+            - statusCode: 200
+
+  # SENARYO 4: Authenticated Genel CRUD (%10)
+  - name: "Authenticated - Giris + CRUD"
+    weight: 10
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            usernameOrEmail: "{{ uz_username }}"
+            password: "{{ uz_password }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/olaylar_tum"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+      - think: 1
+      - post:
+          url: "/api/submit_olay"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            enlem: 40.1885
+            boylam: 29.0610
+            olay_turu: 1
+            aciklama: "Auth user load test olayi"
+          capture:
+            - json: "$.olay_id"
+              as: "newOlayId"
+              strict: false
+          afterResponse: "saveCreatedOlayId"
+      - think: 1
+      - patch:
+          url: "/api/olay/{{ newOlayId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            aciklama: "Auth user - guncellendi"
+          ifTrue: "newOlayId"
+      - think: 1
+      - delete:
+          url: "/api/olay/{{ newOlayId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          ifTrue: "newOlayId"
+
+  # SENARYO 5: Unauthenticated Guvenlik Testi (%10)
+  - name: "Unauthenticated - CRUD Denemesi (Guvenlik)"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/olaylar_tum"
+          expect:
+            - statusCode:
+                - 200
+                - 401
+      - think: 1
+      - post:
+          url: "/api/submit_olay"
+          json:
+            enlem: 41.0082
+            boylam: 28.9784
+            olay_turu: 1
+            aciklama: "Yetkisiz test"
+          expect:
+            - statusCode: 401
+      - think: 1
+      - patch:
+          url: "/api/olay/1"
+          json:
+            aciklama: "Yetkisiz guncelleme"
+          expect:
+            - statusCode: 401
+      - think: 1
+      - delete:
+          url: "/api/olay/1"
+          expect:
+            - statusCode: 401
+      - think: 1
+      - get:
+          url: "/api/olaylar"
+          expect:
+            - statusCode: 401
+      - think: 1
+      - get:
+          url: "/api/admin/users"
+          expect:
+            - statusCode: 401

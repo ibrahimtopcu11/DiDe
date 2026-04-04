@@ -1,0 +1,13 @@
+[info] Loaded edge based graph: 23308 edges, 5768 nodes[0m
+[info] Loading partition data took 0.122169 seconds[0m
+[info] Cells customization took 0.006469 seconds[0m
+[info] Cells statistics per level[0m
+[info] Level 1 #cells 23 #boundary nodes 463, sources: avg. 13, destinations: avg. 19, entries: 8952 (71616 bytes)[0m
+[info] Level 2 #cells 3 #boundary nodes 39, sources: avg. 9, destinations: avg. 12, entries: 528 (4224 bytes)[0m
+[info] Level 3 #cells 1 #boundary nodes 0, sources: avg. 0, destinations: avg. 0, entries: 0 (0 bytes)[0m
+[info] Level 4 #cells 1 #boundary nodes 0, sources: avg. 0, destinations: avg. 0, entries: 0 (0 bytes)[0m
+[info] Unreachable nodes statistics per level[0m
+[info] MLD customization writing took 0.018868 seconds[0m
+[info] Graph writing took 0.02652 seconds[0m
+[info] RAM: peak bytes used: 10113024[0m
+
