@@ -1,33 +1,8 @@
-#!/usr/bin/env node
-/**
- * ============================================================================
- * DiDe - Artillery Yuk Testi Orkestratoru
- * ============================================================================
- *
- * TEK KOMUT - her seyi yapar:
- *   1) DB'de gecici test kullanicilari olusturur
- *   2) Artillery testini calistirir
- *   3) Test bitince OTOMATIK temizler (DB + CSV)
- *
- * KULLANIM:
- *   node run-load-test.js                  # Testi calistir
- *   node run-load-test.js --report         # Test + HTML rapor
- *   node run-load-test.js --keep-users     # Temizleme yapma (debug)
- *   node run-load-test.js --cleanup-only   # Sadece eski artiklari temizle
- *
- * .env'e eklenecekler (4 satir):
- *   TARGET_URL=http://localhost:3000
- *   TOTAL_VU_PER_SEC=10
- *   TEST_DURATION_SEC=60
- *   RAMP_DURATION_SEC=30
- * ============================================================================
- */
-
 "use strict";
 
-const path          = require("path");
-const fs            = require("fs");
-const { execSync }  = require("child_process");
+const path         = require("path");
+const fs           = require("fs");
+const { execSync } = require("child_process");
 
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
@@ -42,21 +17,27 @@ try {
 
 // ── Sabitler ──────────────────────────────────────────────────────────────
 
-const PREFIX         = "artillery_test_";
-const AUTO_PASSWORD  = "ArtLoad_2026!x";
-const SV_COUNT       = parseInt(process.env.ARTILLERY_SUPERVISOR_COUNT || "3", 10);
-const UZ_COUNT       = parseInt(process.env.ARTILLERY_UZMAN_COUNT      || "5", 10);
+const PREFIX        = "artillery_test_";
+const AUTO_PASSWORD = "ArtLoad_2026!x";
+const SV_COUNT      = parseInt(process.env.ARTILLERY_SUPERVISOR_COUNT || "3", 10);
+const UZ_COUNT      = parseInt(process.env.ARTILLERY_UZMAN_COUNT      || "5", 10);
 
-const CSV_SV         = path.join(__dirname, "test-users-supervisor.csv");
-const CSV_UZ         = path.join(__dirname, "test-users-uzman.csv");
-const RESULTS_JSON   = path.join(__dirname, "artillery-results.json");
-const REPORT_HTML    = path.join(__dirname, "artillery-rapor.html");
-const YML_PATH       = path.join(__dirname, "load-test.yml");
+const TARGET_URL    = process.env.TARGET_URL        || "http://localhost:3000";
+const VU_PER_SEC    = parseInt(process.env.TOTAL_VU_PER_SEC  || "10", 10);
+const TEST_DUR      = parseInt(process.env.TEST_DURATION_SEC || "60", 10);
+const RAMP_DUR      = parseInt(process.env.RAMP_DURATION_SEC || "30", 10);
 
-const args           = process.argv.slice(2);
-const FLAG_REPORT    = args.includes("--report");
-const FLAG_KEEP      = args.includes("--keep-users");
-const FLAG_CLEANUP   = args.includes("--cleanup-only");
+const CSV_SV        = path.join(__dirname, "test-users-supervisor.csv");
+const CSV_UZ        = path.join(__dirname, "test-users-uzman.csv");
+const RESULTS_JSON  = path.join(__dirname, "artillery-results.json");
+const REPORT_HTML   = path.join(__dirname, "artillery-rapor.html");
+const YML_PATH      = path.join(__dirname, "load-test.yml");
+const OVERRIDES_JSON = path.join(__dirname, ".artillery-overrides.json");
+
+const args          = process.argv.slice(2);
+const FLAG_REPORT   = args.includes("--report");
+const FLAG_KEEP     = args.includes("--keep-users");
+const FLAG_CLEANUP  = args.includes("--cleanup-only");
 
 // ── DB ───────────────────────────────────────────────────────────────────
 
@@ -73,11 +54,10 @@ const pool = new Pool({
 async function createTestUsers() {
   console.log("\n[1/4] Test kullanicilari olusturuluyor...");
 
-  const client = await pool.connect();
+  const client  = await pool.connect();
   const created = { supervisor: [], user: [] };
 
   try {
-    // Sifreyi hashle (index.js L:2323 ile ayni yontem)
     const hash = await bcrypt.hash(AUTO_PASSWORD, 10);
 
     for (const [role, count] of [["supervisor", SV_COUNT], ["user", UZ_COUNT]]) {
@@ -85,7 +65,6 @@ async function createTestUsers() {
         const username = `${PREFIX}${role}_${i}`;
         const email    = `${username}@artillery-test.local`;
 
-        // Zaten var mi?
         const existing = await client.query(
           "SELECT id FROM users WHERE username = $1", [username]
         );
@@ -95,20 +74,12 @@ async function createTestUsers() {
           continue;
         }
 
-        // ─────────────────────────────────────────────────────────
-        // KRITIK FIX: DB trigger (app_api.users_before_ins_upd)
-        // INSERT oncesi set_config('app.password_plain') ZORUNLU.
-        // Bu pattern index.js L:2321 ile birebir ayni.
-        // ─────────────────────────────────────────────────────────
         await client.query("BEGIN");
         try {
-          // 1) Duz sifreyi session degiskenine yaz (trigger okuyacak)
           await client.query(
             `SELECT set_config('app.password_plain', $1, true)`,
             [AUTO_PASSWORD]
           );
-
-          // 2) INSERT
           await client.query(
             `INSERT INTO users (
                username, password_hash, role, name, surname, email,
@@ -117,14 +88,11 @@ async function createTestUsers() {
              ) VALUES ($1, $2, $3, $4, $5, $6, TRUE, TRUE, TRUE, FALSE, NULL)`,
             [username, hash, role, `Test_${role}`, `${i}`, email]
           );
-
           await client.query("COMMIT");
           created[role].push(username);
           console.log(`      + ${username}`);
-
         } catch (insertErr) {
           try { await client.query("ROLLBACK"); } catch {}
-
           if (insertErr.code === "23505" || insertErr.code === "P0002") {
             created[role].push(username);
             console.log(`      ~ ${username} (zaten var)`);
@@ -132,17 +100,11 @@ async function createTestUsers() {
             console.error(`      x ${username}: ${insertErr.message}`);
           }
         } finally {
-          // 3) Duz sifreyi temizle (index.js L:2353)
-          try {
-            await client.query(
-              `SELECT set_config('app.password_plain', NULL, true)`
-            );
-          } catch {}
+          try { await client.query(`SELECT set_config('app.password_plain', NULL, true)`); } catch {}
         }
       }
     }
 
-    // CSV olustur
     for (const [role, file] of [["supervisor", CSV_SV], ["user", CSV_UZ]]) {
       let csv = "username,password\n";
       created[role].forEach(u => { csv += `${u},${AUTO_PASSWORD}\n`; });
@@ -151,8 +113,6 @@ async function createTestUsers() {
 
     console.log(`\n      Supervisor : ${created.supervisor.length}`);
     console.log(`      Uzman/User : ${created.user.length}`);
-    console.log(`      CSV'ler yazildi.`);
-
     return created;
   } finally {
     client.release();
@@ -167,19 +127,14 @@ async function cleanup() {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-
     const olayDel = await client.query(
-      `DELETE FROM olay WHERE created_by_name LIKE $1`,
-      [PREFIX + "%"]
+      `DELETE FROM olay WHERE created_by_name LIKE $1`, [PREFIX + "%"]
     );
     console.log(`      ${olayDel.rowCount} test olayi silindi`);
-
     const userDel = await client.query(
-      `DELETE FROM users WHERE username LIKE $1`,
-      [PREFIX + "%"]
+      `DELETE FROM users WHERE username LIKE $1`, [PREFIX + "%"]
     );
     console.log(`      ${userDel.rowCount} test kullanicisi silindi`);
-
     await client.query("COMMIT");
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch {}
@@ -188,13 +143,12 @@ async function cleanup() {
     client.release();
   }
 
-  for (const f of [CSV_SV, CSV_UZ]) {
+  for (const f of [CSV_SV, CSV_UZ, OVERRIDES_JSON]) {
     if (fs.existsSync(f)) {
       fs.unlinkSync(f);
       console.log(`      ${path.basename(f)} silindi`);
     }
   }
-
   console.log("      Temizlik tamamlandi.\n");
 }
 
@@ -202,15 +156,28 @@ async function cleanup() {
 
 function runArtillery() {
   console.log("\n[2/4] Artillery testi baslatiliyor...");
-  console.log(`      Hedef  : ${process.env.TARGET_URL || "http://localhost:3000"}`);
-  console.log(`      VU/s   : ${process.env.TOTAL_VU_PER_SEC || "10"}`);
-  console.log(`      Sure   : ${process.env.TEST_DURATION_SEC || "60"}s\n`);
+  console.log(`      Hedef  : ${TARGET_URL}`);
+  console.log(`      VU/s   : ${VU_PER_SEC}`);
+  console.log(`      Sure   : ${TEST_DUR}s`);
+  console.log(`      Rampa  : ${RAMP_DUR}s\n`);
+
+  // Overrides'i DOSYAYA yaz (Windows'ta CLI JSON quote sorunu olmaz)
+  const overrides = {
+    config: {
+      target: TARGET_URL,
+      phases: [
+        { name: "Isinma Fazi",    duration: RAMP_DUR, arrivalRate: 1, rampTo: VU_PER_SEC },
+        { name: "Sabit Yuk Fazi", duration: TEST_DUR, arrivalRate: VU_PER_SEC },
+        { name: "Soguma Fazi",    duration: 10,       arrivalRate: VU_PER_SEC, rampTo: 1 }
+      ]
+    }
+  };
+  fs.writeFileSync(OVERRIDES_JSON, JSON.stringify(overrides), "utf-8");
+
+  const cmd = `artillery run "${YML_PATH}" --overrides "${OVERRIDES_JSON}" --output "${RESULTS_JSON}"`;
 
   try {
-    execSync(
-      `artillery run "${YML_PATH}" --output "${RESULTS_JSON}"`,
-      { stdio: "inherit", env: process.env }
-    );
+    execSync(cmd, { stdio: "inherit", env: process.env });
     return true;
   } catch {
     console.error("\n      Artillery tamamlandi (esik asilmis olabilir).");
@@ -222,10 +189,7 @@ function generateReport() {
   if (!fs.existsSync(RESULTS_JSON)) return;
   console.log("\n[3/4] HTML rapor olusturuluyor...");
   try {
-    execSync(
-      `artillery report "${RESULTS_JSON}" --output "${REPORT_HTML}"`,
-      { stdio: "inherit" }
-    );
+    execSync(`artillery report "${RESULTS_JSON}" --output "${REPORT_HTML}"`, { stdio: "inherit" });
     console.log(`      Rapor: ${REPORT_HTML}`);
   } catch (err) {
     console.error(`      Rapor hatasi: ${err.message}`);
@@ -247,11 +211,7 @@ async function main() {
     process.exit(1);
   }
 
-  if (FLAG_CLEANUP) {
-    await cleanup();
-    await pool.end();
-    return;
-  }
+  if (FLAG_CLEANUP) { await cleanup(); await pool.end(); return; }
 
   if (!fs.existsSync(YML_PATH)) {
     console.error(`\n  HATA: ${YML_PATH} bulunamadi!`);
@@ -264,18 +224,15 @@ async function main() {
     if (FLAG_REPORT || fs.existsSync(RESULTS_JSON)) generateReport();
     console.log(ok ? "\n  Test BASARIYLA tamamlandi." : "\n  Test tamamlandi.");
   } finally {
-    if (!FLAG_KEEP) {
-      await cleanup();
-    } else {
+    if (!FLAG_KEEP) { await cleanup(); }
+    else {
       console.log("\n  --keep-users aktif, temizlik YAPILMADI.");
       console.log("  Manuel: node run-load-test.js --cleanup-only");
     }
   }
-
   await pool.end();
 }
 
-// CTRL+C temizlik
 let cleaning = false;
 async function emergencyCleanup() {
   if (cleaning) return;

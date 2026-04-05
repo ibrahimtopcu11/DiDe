@@ -1,26 +1,19 @@
-# Kullanim:
-#   1) node fetch-test-users.js
-#   2) npm start (ayri terminalde)
-#   3) artillery run load-test.yml --output results.json
-#   4) artillery report results.json --output rapor.html
-# ============================================================================
-
 config:
-  target: "{{ $processEnvironment.TARGET_URL }}"
+  target: "http://localhost:3000"
 
   phases:
     - name: "Isinma Fazi"
-      duration: "{{ $processEnvironment.RAMP_DURATION_SEC }}"
+      duration: 30
       arrivalRate: 1
-      rampTo: "{{ $processEnvironment.TOTAL_VU_PER_SEC }}"
+      rampTo: 10
 
     - name: "Sabit Yuk Fazi"
-      duration: "{{ $processEnvironment.TEST_DURATION_SEC }}"
-      arrivalRate: "{{ $processEnvironment.TOTAL_VU_PER_SEC }}"
+      duration: 60
+      arrivalRate: 10
 
     - name: "Soguma Fazi"
       duration: 10
-      arrivalRate: "{{ $processEnvironment.TOTAL_VU_PER_SEC }}"
+      arrivalRate: 10
       rampTo: 1
 
   payload:
@@ -61,24 +54,8 @@ config:
 
   processor: "./processor.js"
 
-# ===========================================================================
-# DOGRULANMIS API ENDPOINT TABLOSU (index.js satir numaralari ile)
-# ===========================================================================
-# POST   /api/auth/login      Yok         L:1491  Giris (usernameOrEmail+password)
-# GET    /api/me              requireAuth L:1581  Kullanici bilgisi
-# GET    /api/olaylar         requireAuth L:1742  Olay turleri
-# GET    /api/olaylar_tum     tryAuth     L:1757  Tum olaylar (anonim olabilir)
-# POST   /api/submit_olay     requireAuth L:1894  Yeni olay olustur
-# PATCH  /api/olay/:id        requireAuth L:1943  Olay guncelle (SUP YASAK!)
-# DELETE /api/olay/:id        requireAuth L:2016  Olay sil
-# GET    /api/admin/users     adminOnly   L:2258  Kullanici listesi
-# GET    /api/config          Yok         L:1344  Site yapilandirmasi
-# GET    /health              Yok         L:2759  Saglik kontrolu
-# ===========================================================================
-
 scenarios:
 
-  # SENARYO 1: SUPERVISOR (%20)
   - name: "Supervisor - Giris + Sorgulama"
     weight: 20
     flow:
@@ -131,7 +108,6 @@ scenarios:
           expect:
             - statusCode: 200
 
-  # SENARYO 2: VATANDAS (%35) - sadece GET
   - name: "Vatandas - Giris Yapmadan Sadece Okuma"
     weight: 35
     flow:
@@ -166,7 +142,6 @@ scenarios:
                 - 200
                 - 401
 
-  # SENARYO 3: UZMAN (%25) - Tam CRUD
   - name: "Uzman - Giris + Tam CRUD"
     weight: 25
     flow:
@@ -249,7 +224,6 @@ scenarios:
           expect:
             - statusCode: 200
 
-  # SENARYO 4: Authenticated Genel CRUD (%10)
   - name: "Authenticated - Giris + CRUD"
     weight: 10
     flow:
@@ -298,7 +272,6 @@ scenarios:
             Authorization: "Bearer {{ authToken }}"
           ifTrue: "newOlayId"
 
-  # SENARYO 5: Unauthenticated Guvenlik Testi (%10)
   - name: "Unauthenticated - CRUD Denemesi (Guvenlik)"
     weight: 10
     flow:
