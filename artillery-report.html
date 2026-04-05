@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DiDe - Artillery Load Test Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f5f5f5;color:#333}
+.header{background:linear-gradient(135deg,#1565c0,#0d47a1);color:#fff;padding:32px;text-align:center}
+.header h1{font-size:24px;margin-bottom:8px}.header p{opacity:.8;font-size:14px}
+.container{max-width:1200px;margin:0 auto;padding:20px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:20px 0}
+.card{background:#fff;border-radius:12px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.card .value{font-size:28px;font-weight:700;margin:8px 0}.card .label{font-size:12px;color:#666;text-transform:uppercase}
+.card.green .value{color:#2e7d32}.card.red .value{color:#c62828}.card.orange .value{color:#e65100}.card.blue .value{color:#1565c0}
+.section{background:#fff;border-radius:12px;padding:24px;margin:20px 0;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.section h2{font-size:18px;color:#1565c0;margin-bottom:16px;padding-bottom:8px;border-bottom:2px solid #e3f2fd}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f5f5f5;padding:10px 12px;text-align:left;font-weight:600;border-bottom:2px solid #e0e0e0}
+td{padding:8px 12px;border-bottom:1px solid #f0f0f0}tr:hover{background:#fafafa}
+.badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:600;color:#fff}
+.chart-container{position:relative;height:300px;margin:16px 0}
+.bar{display:inline-block;height:20px;border-radius:3px;margin:2px 0}
+.footer{text-align:center;padding:20px;color:#999;font-size:12px}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>DiDe - Artillery Load Test Report</h1>
+  <p>http://localhost:3000 | 100 VU/s | 60s duration | 2026-04-05 08:06:17</p>
+</div>
+<div class="container">
+
+<div class="cards">
+  <div class="card blue"><div class="label">Total Requests</div><div class="value">14.506</div></div>
+  <div class="card green"><div class="label">Successful (200)</div><div class="value">5.947</div></div>
+  <div class="card red"><div class="label">Server Errors (5xx)</div><div class="value">687</div></div>
+  <div class="card orange"><div class="label">Timeouts</div><div class="value">1.328</div></div>
+  <div class="card blue"><div class="label">VUs Created</div><div class="value">8.020</div></div>
+  <div class="card red"><div class="label">Success Rate</div><div class="value">15.7%</div></div>
+</div>
+
+<div class="section">
+  <h2>Response Time (ms)</h2>
+  <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
+    <div class="card"><div class="label">Min</div><div class="value" style="font-size:20px">1</div></div>
+    <div class="card"><div class="label">Median</div><div class="value" style="font-size:20px">3985</div></div>
+    <div class="card"><div class="label">Mean</div><div class="value" style="font-size:20px">4162</div></div>
+    <div class="card orange"><div class="label">p95</div><div class="value" style="font-size:20px">8693</div></div>
+    <div class="card red"><div class="label">p99</div><div class="value" style="font-size:20px">9801</div></div>
+    <div class="card red"><div class="label">Max</div><div class="value" style="font-size:20px">9997</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Response Time Over Time</h2>
+  <div class="chart-container"><canvas id="timelineChart"></canvas></div>
+</div>
+
+<div class="section">
+  <h2>Request & Error Counts Over Time</h2>
+  <div class="chart-container"><canvas id="rpsChart"></canvas></div>
+</div>
+
+<div class="section">
+  <h2>HTTP Status Codes</h2>
+  <table>
+    <tr><th>Code</th><th>Count</th><th>Ratio</th><th>Visual</th></tr>
+    <tr><td><span class="badge" style="background:#4caf50">200</span></td><td>5.947</td><td>76.2%</td><td><div class="bar" style="width:228.60000000000002px;background:#4caf50"></div></td></tr><tr><td><span class="badge" style="background:#f57c00">401</span></td><td>1.171</td><td>15.0%</td><td><div class="bar" style="width:45px;background:#f57c00"></div></td></tr><tr><td><span class="badge" style="background:#f44336">500</span></td><td>687</td><td>8.8%</td><td><div class="bar" style="width:26.400000000000002px;background:#f44336"></div></td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Errors</h2>
+  <table>
+    <tr><th>Error Type</th><th>Count</th><th>Description</th></tr>
+    <tr><td><b>Failed capture or match</b></td><td>56</td><td>Response did not match expected format</td></tr><tr><td><b>ECONNREFUSED</b></td><td>5.367</td><td>Server refused connection</td></tr><tr><td><b>ETIMEDOUT</b></td><td>1.328</td><td>Server did not respond (timeout)</td></tr><tr><td><b>ECONNRESET</b></td><td>6</td><td>Connection reset by server</td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Endpoint Performance</h2>
+  <table>
+    <tr><th>Endpoint</th><th>Requests</th><th>Min</th><th>Median</th><th>p95</th><th>p99</th><th>Max</th></tr>
+    <tr><td><b>/api/olaylar_tum</b></td><td>3045</td><td>30</td><td>4493</td><td style="color:#c62828">8693</td><td style="color:#c62828">9801</td><td>9997</td></tr><tr><td><b>/api/auth/login</b></td><td>853</td><td>52</td><td>4147</td><td style="color:#c62828">9048</td><td style="color:#c62828">9801</td><td>9856</td></tr><tr><td><b>/api/olaylar</b></td><td>745</td><td>2</td><td>4867</td><td style="color:#c62828">9417</td><td style="color:#c62828">9801</td><td>9993</td></tr><tr><td><b>/health</b></td><td>586</td><td>1</td><td>4317</td><td style="color:#c62828">9417</td><td style="color:#c62828">9801</td><td>9929</td></tr><tr><td><b>/api/config</b></td><td>586</td><td>1</td><td>1326</td><td style="color:#c62828">3606</td><td style="color:#333">3906</td><td>4002</td></tr><tr><td><b>/api/submit_olay</b></td><td>557</td><td>1</td><td>4676</td><td style="color:#c62828">9048</td><td style="color:#c62828">9607</td><td>9890</td></tr><tr><td><b>/api/admin/users</b></td><td>360</td><td>5</td><td>3464</td><td style="color:#c62828">8521</td><td style="color:#c62828">9607</td><td>9989</td></tr><tr><td><b>/api/olay/{{ createdOlayId }}</b></td><td>351</td><td>4</td><td>3262</td><td style="color:#c62828">8352</td><td style="color:#c62828">8693</td><td>9587</td></tr><tr><td><b>/api/olay/1</b></td><td>328</td><td>1</td><td>1496</td><td style="color:#333">2566</td><td style="color:#333">2566</td><td>2836</td></tr><tr><td><b>/api/me</b></td><td>274</td><td>2</td><td>2780</td><td style="color:#c62828">7710</td><td style="color:#c62828">9230</td><td>9158</td></tr><tr><td><b>/api/olay/{{ newOlayId }}</b></td><td>120</td><td>4</td><td>5598</td><td style="color:#c62828">9230</td><td style="color:#c62828">9607</td><td>9650</td></tr>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Scenario Distribution</h2>
+  <table>
+    <tr><th>Scenario</th><th>VU Count</th><th>Ratio</th></tr>
+    <tr><td>Vatandas - Giris Yapmadan Sadece Okuma</td><td>2.719</td><td>33.9%</td></tr><tr><td>Uzman - Giris + Tam CRUD</td><td>1.978</td><td>24.7%</td></tr><tr><td>Supervisor - Giris + Sorgulama</td><td>1.673</td><td>20.9%</td></tr><tr><td>Authenticated - Giris + CRUD</td><td>848</td><td>10.6%</td></tr><tr><td>Unauthenticated - CRUD Denemesi (Guvenlik)</td><td>802</td><td>10.0%</td></tr>
+  </table>
+</div>
+
+</div>
+<div class="footer">DiDe Artillery Load Test Report | 2026-04-05 08:06:18</div>
+
+<script>
+const tl=[{"period":1,"rps":31,"ok":28,"err4":2,"err5":0,"timeout":0,"p50":7,"p95":85.6,"p99":104.6},{"period":2,"rps":771,"ok":578,"err4":41,"err5":0,"timeout":0,"p50":206.5,"p95":1863.5,"p99":2780},{"period":3,"rps":1488,"ok":692,"err4":142,"err5":132,"timeout":0,"p50":2186.8,"p95":4867,"p99":9047.6},{"period":4,"rps":1612,"ok":485,"err4":132,"err5":73,"timeout":184,"p50":5711.5,"p95":9416.8,"p99":9801.2},{"period":5,"rps":1323,"ok":251,"err4":101,"err5":25,"timeout":293,"p50":7260.8,"p95":9801.2,"p99":9999.2},{"period":6,"rps":1222,"ok":277,"err4":50,"err5":31,"timeout":174,"p50":4770.6,"p95":9230.4,"p99":9999.2},{"period":7,"rps":1771,"ok":789,"err4":102,"err5":16,"timeout":0,"p50":3752.7,"p95":9047.6,"p99":9607.1},{"period":8,"rps":1563,"ok":367,"err4":140,"err5":80,"timeout":257,"p50":5944.6,"p95":9416.8,"p99":9801.2},{"period":9,"rps":1382,"ok":283,"err4":108,"err5":47,"timeout":204,"p50":7117,"p95":9801.2,"p99":9801.2},{"period":10,"rps":1127,"ok":268,"err4":22,"err5":55,"timeout":216,"p50":6064.7,"p95":9230.4,"p99":9230.4},{"period":11,"rps":1057,"ok":869,"err4":112,"err5":39,"timeout":0,"p50":3072.4,"p95":7260.8,"p99":8352},{"period":12,"rps":652,"ok":437,"err4":175,"err5":87,"timeout":0,"p50":4316.6,"p95":6312.2,"p99":8186.6},{"period":13,"rps":394,"ok":396,"err4":38,"err5":88,"timeout":0,"p50":4403.8,"p95":6702.6,"p99":8868.4},{"period":14,"rps":113,"ok":227,"err4":6,"err5":14,"timeout":0,"p50":2893.5,"p95":6702.6,"p99":6838}];
+new Chart(document.getElementById("timelineChart"),{
+  type:"line",
+  data:{labels:tl.map(t=>"P"+t.period),datasets:[
+    {label:"Median (ms)",data:tl.map(t=>t.p50),borderColor:"#1565c0",backgroundColor:"rgba(21,101,192,.1)",fill:true,tension:.3},
+    {label:"p95 (ms)",data:tl.map(t=>t.p95),borderColor:"#ff9800",borderDash:[5,5],tension:.3},
+    {label:"p99 (ms)",data:tl.map(t=>t.p99),borderColor:"#f44336",borderDash:[2,2],tension:.3}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"top"}},scales:{y:{title:{display:true,text:"ms"}}}}
+});
+new Chart(document.getElementById("rpsChart"),{
+  type:"bar",
+  data:{labels:tl.map(t=>"P"+t.period),datasets:[
+    {label:"200 OK",data:tl.map(t=>t.ok),backgroundColor:"#4caf50"},
+    {label:"4xx",data:tl.map(t=>t.err4),backgroundColor:"#ff9800"},
+    {label:"5xx",data:tl.map(t=>t.err5),backgroundColor:"#f44336"},
+    {label:"Timeout",data:tl.map(t=>t.timeout),backgroundColor:"#9e9e9e"}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:"top"}},scales:{x:{stacked:true},y:{stacked:true,title:{display:true,text:"Count"}}}}
+});
+</script>
+</body></html>
