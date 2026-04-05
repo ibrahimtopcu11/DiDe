@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 "use strict";
 
 const path         = require("path");
@@ -28,6 +29,7 @@ const RAMP_DUR      = parseInt(process.env.RAMP_DURATION_SEC || "30", 10);
 const CSV_SV        = path.join(__dirname, "test-users-supervisor.csv");
 const CSV_UZ        = path.join(__dirname, "test-users-uzman.csv");
 const RESULTS_JSON  = path.join(__dirname, "artillery-results.json");
+const REPORT_HTML   = path.join(__dirname, "artillery-rapor.html");
 const YML_BASE      = path.join(__dirname, "load-test.yml");
 const YML_RUN       = path.join(__dirname, ".artillery-run.yml");
 
@@ -43,19 +45,15 @@ const pool = new Pool({
   password: process.env.PGPASSWORD || "",
 });
 
-// ── Gecici YAML Olustur ──────────────────────────────────────────────────
+// ── Gecici YAML ──────────────────────────────────────────────────────────
 
 function buildRunYaml() {
   const baseYml = fs.readFileSync(YML_BASE, "utf-8");
 
-  // scenarios: satirini bul ve orayi kes
   const scenariosMatch = baseYml.match(/^scenarios:/m);
-  if (!scenariosMatch) {
-    throw new Error("load-test.yml icinde 'scenarios:' bulunamadi!");
-  }
+  if (!scenariosMatch) throw new Error("load-test.yml icinde 'scenarios:' bulunamadi!");
   const scenariosSection = baseYml.substring(scenariosMatch.index);
 
-  // Config bolumunu sifirdan olustur (.env degerlerini icerir)
   const configSection = `config:
   target: "${TARGET_URL}"
 
@@ -116,7 +114,7 @@ function buildRunYaml() {
 // ── Kullanici Olustur ────────────────────────────────────────────────────
 
 async function createTestUsers() {
-  console.log("\n[1/3] Test kullanicilari olusturuluyor...");
+  console.log("\n[1/4] Test kullanicilari olusturuluyor...");
 
   const client  = await pool.connect();
   const created = { supervisor: [], user: [] };
@@ -140,8 +138,7 @@ async function createTestUsers() {
         await client.query("BEGIN");
         try {
           await client.query(
-            `SELECT set_config('app.password_plain', $1, true)`,
-            [AUTO_PASSWORD]
+            `SELECT set_config('app.password_plain', $1, true)`, [AUTO_PASSWORD]
           );
           await client.query(
             `INSERT INTO users (
@@ -183,7 +180,7 @@ async function createTestUsers() {
 // ── Temizle ──────────────────────────────────────────────────────────────
 
 async function cleanup() {
-  console.log("\n[3/3] Temizlik yapiliyor...");
+  console.log("\n[4/4] Temizlik yapiliyor...");
 
   const client = await pool.connect();
   try {
@@ -209,10 +206,10 @@ async function cleanup() {
   console.log("      Gecici dosyalar silindi. Temizlik tamamlandi.\n");
 }
 
-// ── Artillery ────────────────────────────────────────────────────────────
+// ── Artillery + Rapor ────────────────────────────────────────────────────
 
 function runArtillery() {
-  console.log("\n[2/3] Artillery testi baslatiliyor...");
+  console.log("\n[2/4] Artillery testi baslatiliyor...");
   console.log(`      Hedef: ${TARGET_URL} | VU/s: ${VU_PER_SEC} | Sure: ${TEST_DUR}s | Rampa: ${RAMP_DUR}s\n`);
 
   buildRunYaml();
@@ -225,6 +222,32 @@ function runArtillery() {
     return true;
   } catch {
     return false;
+  }
+}
+
+function generateReport() {
+  if (!fs.existsSync(RESULTS_JSON)) {
+    console.log("\n[3/4] Rapor: artillery-results.json bulunamadi, rapor uretilemedi.");
+    return;
+  }
+
+  console.log("\n[3/4] HTML rapor olusturuluyor...");
+
+  try {
+    execSync(
+      `artillery report "${RESULTS_JSON}" --output "${REPORT_HTML}"`,
+      { stdio: "inherit" }
+    );
+  } catch {
+    // artillery report deprecated olsa bile dosyayi olusturur
+  }
+
+  if (fs.existsSync(REPORT_HTML)) {
+    console.log(`      Rapor olusturuldu: ${REPORT_HTML}`);
+    console.log(`      Tarayicida acmak icin: start artillery-rapor.html`);
+  } else {
+    console.log("      Artillery 'report' komutu artik desteklenmiyor.");
+    console.log("      Alternatif: https://app.artillery.io adresine artillery-results.json yukleyin.");
   }
 }
 
@@ -253,6 +276,7 @@ async function main() {
   try {
     await createTestUsers();
     runArtillery();
+    generateReport();
   } finally {
     if (!FLAG_KEEP) { await cleanup(); }
     else { console.log("\n  --keep-users aktif. Manuel: node run-load-test.js --cleanup-only"); }
