@@ -15,8 +15,6 @@ try {
   process.exit(1);
 }
 
-// ── Sabitler ──────────────────────────────────────────────────────────────
-
 const PREFIX        = "artillery_test_";
 const AUTO_PASSWORD = "ArtLoad_2026!x";
 const SV_COUNT      = parseInt(process.env.ARTILLERY_SUPERVISOR_COUNT || "3", 10);
@@ -31,15 +29,13 @@ const CSV_SV        = path.join(__dirname, "test-users-supervisor.csv");
 const CSV_UZ        = path.join(__dirname, "test-users-uzman.csv");
 const RESULTS_JSON  = path.join(__dirname, "artillery-results.json");
 const REPORT_HTML   = path.join(__dirname, "artillery-rapor.html");
-const YML_PATH      = path.join(__dirname, "load-test.yml");
-const OVERRIDES_JSON = path.join(__dirname, ".artillery-overrides.json");
+const YML_BASE      = path.join(__dirname, "load-test.yml");
+const YML_RUN       = path.join(__dirname, ".artillery-run.yml");
 
 const args          = process.argv.slice(2);
 const FLAG_REPORT   = args.includes("--report");
 const FLAG_KEEP     = args.includes("--keep-users");
 const FLAG_CLEANUP  = args.includes("--cleanup-only");
-
-// ── DB ───────────────────────────────────────────────────────────────────
 
 const pool = new Pool({
   host:     process.env.PGHOST     || "localhost",
@@ -48,6 +44,45 @@ const pool = new Pool({
   user:     process.env.PGUSER     || "postgres",
   password: process.env.PGPASSWORD || "",
 });
+
+// ── Gecici YAML Olustur ──────────────────────────────────────────────────
+// load-test.yml'i okur, config.target ve phases degerlerini .env'den
+// gelen degerlerle degistirip .artillery-run.yml olarak yazar.
+// Boylece --overrides veya --target CLI flag'i GEREKMEZ.
+
+function buildRunYaml() {
+  let yml = fs.readFileSync(YML_BASE, "utf-8");
+
+  // target degistir
+  yml = yml.replace(
+    /^(\s*target:\s*)"[^"]*"/m,
+    `$1"${TARGET_URL}"`
+  );
+
+  // phases blogunun tamamini degistir
+  const newPhases = [
+    `    - name: "Isinma Fazi"`,
+    `      duration: ${RAMP_DUR}`,
+    `      arrivalRate: 1`,
+    `      rampTo: ${VU_PER_SEC}`,
+    ``,
+    `    - name: "Sabit Yuk Fazi"`,
+    `      duration: ${TEST_DUR}`,
+    `      arrivalRate: ${VU_PER_SEC}`,
+    ``,
+    `    - name: "Soguma Fazi"`,
+    `      duration: 10`,
+    `      arrivalRate: ${VU_PER_SEC}`,
+    `      rampTo: 1`,
+  ].join("\n");
+
+  yml = yml.replace(
+    /phases:[\s\S]*?(?=\n  payload:)/m,
+    `phases:\n${newPhases}\n\n  `
+  );
+
+  fs.writeFileSync(YML_RUN, yml, "utf-8");
+}
 
 // ── Kullanici Olustur ────────────────────────────────────────────────────
 
@@ -143,7 +178,7 @@ async function cleanup() {
     client.release();
   }
 
-  for (const f of [CSV_SV, CSV_UZ, OVERRIDES_JSON]) {
+  for (const f of [CSV_SV, CSV_UZ, YML_RUN]) {
     if (fs.existsSync(f)) {
       fs.unlinkSync(f);
       console.log(`      ${path.basename(f)} silindi`);
@@ -161,23 +196,14 @@ function runArtillery() {
   console.log(`      Sure   : ${TEST_DUR}s`);
   console.log(`      Rampa  : ${RAMP_DUR}s\n`);
 
-  // Overrides'i DOSYAYA yaz (Windows'ta CLI JSON quote sorunu olmaz)
-  const overrides = {
-    config: {
-      target: TARGET_URL,
-      phases: [
-        { name: "Isinma Fazi",    duration: RAMP_DUR, arrivalRate: 1, rampTo: VU_PER_SEC },
-        { name: "Sabit Yuk Fazi", duration: TEST_DUR, arrivalRate: VU_PER_SEC },
-        { name: "Soguma Fazi",    duration: 10,       arrivalRate: VU_PER_SEC, rampTo: 1 }
-      ]
-    }
-  };
-  fs.writeFileSync(OVERRIDES_JSON, JSON.stringify(overrides), "utf-8");
-
-  const cmd = `artillery run "${YML_PATH}" --overrides "${OVERRIDES_JSON}" --output "${RESULTS_JSON}"`;
+  // .env degerlerini iceren gecici YAML olustur
+  buildRunYaml();
 
   try {
-    execSync(cmd, { stdio: "inherit", env: process.env });
+    execSync(
+      `artillery run "${YML_RUN}" --output "${RESULTS_JSON}"`,
+      { stdio: "inherit", env: process.env }
+    );
     return true;
   } catch {
     console.error("\n      Artillery tamamlandi (esik asilmis olabilir).");
@@ -213,8 +239,8 @@ async function main() {
 
   if (FLAG_CLEANUP) { await cleanup(); await pool.end(); return; }
 
-  if (!fs.existsSync(YML_PATH)) {
-    console.error(`\n  HATA: ${YML_PATH} bulunamadi!`);
+  if (!fs.existsSync(YML_BASE)) {
+    console.error(`\n  HATA: ${YML_BASE} bulunamadi!`);
     process.exit(1);
   }
 
