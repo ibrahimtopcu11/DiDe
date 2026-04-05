@@ -23,8 +23,6 @@ config:
         - "sv_password"
       order: random
       skipHeader: true
-      loadAll: true
-      name: "supervisorData"
 
     - path: "./test-users-uzman.csv"
       fields:
@@ -32,8 +30,6 @@ config:
         - "uz_password"
       order: random
       skipHeader: true
-      loadAll: true
-      name: "uzmanData"
 
   defaults:
     headers:

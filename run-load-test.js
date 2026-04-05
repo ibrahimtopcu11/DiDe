@@ -28,12 +28,10 @@ const RAMP_DUR      = parseInt(process.env.RAMP_DURATION_SEC || "30", 10);
 const CSV_SV        = path.join(__dirname, "test-users-supervisor.csv");
 const CSV_UZ        = path.join(__dirname, "test-users-uzman.csv");
 const RESULTS_JSON  = path.join(__dirname, "artillery-results.json");
-const REPORT_HTML   = path.join(__dirname, "artillery-rapor.html");
 const YML_BASE      = path.join(__dirname, "load-test.yml");
 const YML_RUN       = path.join(__dirname, ".artillery-run.yml");
 
 const args          = process.argv.slice(2);
-const FLAG_REPORT   = args.includes("--report");
 const FLAG_KEEP     = args.includes("--keep-users");
 const FLAG_CLEANUP  = args.includes("--cleanup-only");
 
@@ -46,48 +44,79 @@ const pool = new Pool({
 });
 
 // ── Gecici YAML Olustur ──────────────────────────────────────────────────
-// load-test.yml'i okur, config.target ve phases degerlerini .env'den
-// gelen degerlerle degistirip .artillery-run.yml olarak yazar.
-// Boylece --overrides veya --target CLI flag'i GEREKMEZ.
 
 function buildRunYaml() {
-  let yml = fs.readFileSync(YML_BASE, "utf-8");
+  const baseYml = fs.readFileSync(YML_BASE, "utf-8");
 
-  // target degistir
-  yml = yml.replace(
-    /^(\s*target:\s*)"[^"]*"/m,
-    `$1"${TARGET_URL}"`
-  );
+  // scenarios: satirini bul ve orayi kes
+  const scenariosMatch = baseYml.match(/^scenarios:/m);
+  if (!scenariosMatch) {
+    throw new Error("load-test.yml icinde 'scenarios:' bulunamadi!");
+  }
+  const scenariosSection = baseYml.substring(scenariosMatch.index);
 
-  // phases blogunun tamamini degistir
-  const newPhases = [
-    `    - name: "Isinma Fazi"`,
-    `      duration: ${RAMP_DUR}`,
-    `      arrivalRate: 1`,
-    `      rampTo: ${VU_PER_SEC}`,
-    ``,
-    `    - name: "Sabit Yuk Fazi"`,
-    `      duration: ${TEST_DUR}`,
-    `      arrivalRate: ${VU_PER_SEC}`,
-    ``,
-    `    - name: "Soguma Fazi"`,
-    `      duration: 10`,
-    `      arrivalRate: ${VU_PER_SEC}`,
-    `      rampTo: 1`,
-  ].join("\n");
+  // Config bolumunu sifirdan olustur (.env degerlerini icerir)
+  const configSection = `config:
+  target: "${TARGET_URL}"
 
-  yml = yml.replace(
-    /phases:[\s\S]*?(?=\n  payload:)/m,
-    `phases:\n${newPhases}\n\n  `
-  );
+  phases:
+    - name: "Isinma Fazi"
+      duration: ${RAMP_DUR}
+      arrivalRate: 1
+      rampTo: ${VU_PER_SEC}
 
-  fs.writeFileSync(YML_RUN, yml, "utf-8");
+    - name: "Sabit Yuk Fazi"
+      duration: ${TEST_DUR}
+      arrivalRate: ${VU_PER_SEC}
+
+    - name: "Soguma Fazi"
+      duration: 10
+      arrivalRate: ${VU_PER_SEC}
+      rampTo: 1
+
+  payload:
+    - path: "./test-users-supervisor.csv"
+      fields:
+        - "sv_username"
+        - "sv_password"
+      order: random
+      skipHeader: true
+
+    - path: "./test-users-uzman.csv"
+      fields:
+        - "uz_username"
+        - "uz_password"
+      order: random
+      skipHeader: true
+
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+  plugins:
+    metrics-by-endpoint: {}
+    ensure: {}
+
+  ensure:
+    thresholds:
+      - http.response_time.p95: 3000
+      - http.response_time.p99: 5000
+    conditions:
+      - expression: "http.codes.500 < 20"
+        strict: true
+
+  processor: "./processor.js"
+
+`;
+
+  fs.writeFileSync(YML_RUN, configSection + scenariosSection, "utf-8");
 }
 
 // ── Kullanici Olustur ────────────────────────────────────────────────────
 
 async function createTestUsers() {
-  console.log("\n[1/4] Test kullanicilari olusturuluyor...");
+  console.log("\n[1/3] Test kullanicilari olusturuluyor...");
 
   const client  = await pool.connect();
   const created = { supervisor: [], user: [] };
@@ -105,7 +134,6 @@ async function createTestUsers() {
         );
         if (existing.rows.length > 0) {
           created[role].push(username);
-          console.log(`      ~ ${username} (zaten var)`);
           continue;
         }
 
@@ -130,7 +158,6 @@ async function createTestUsers() {
           try { await client.query("ROLLBACK"); } catch {}
           if (insertErr.code === "23505" || insertErr.code === "P0002") {
             created[role].push(username);
-            console.log(`      ~ ${username} (zaten var)`);
           } else {
             console.error(`      x ${username}: ${insertErr.message}`);
           }
@@ -146,8 +173,7 @@ async function createTestUsers() {
       fs.writeFileSync(file, csv, "utf-8");
     }
 
-    console.log(`\n      Supervisor : ${created.supervisor.length}`);
-    console.log(`      Uzman/User : ${created.user.length}`);
+    console.log(`      Supervisor: ${created.supervisor.length} | Uzman: ${created.user.length}`);
     return created;
   } finally {
     client.release();
@@ -157,7 +183,7 @@ async function createTestUsers() {
 // ── Temizle ──────────────────────────────────────────────────────────────
 
 async function cleanup() {
-  console.log("\n[4/4] Temizlik yapiliyor...");
+  console.log("\n[3/3] Temizlik yapiliyor...");
 
   const client = await pool.connect();
   try {
@@ -165,12 +191,11 @@ async function cleanup() {
     const olayDel = await client.query(
       `DELETE FROM olay WHERE created_by_name LIKE $1`, [PREFIX + "%"]
     );
-    console.log(`      ${olayDel.rowCount} test olayi silindi`);
     const userDel = await client.query(
       `DELETE FROM users WHERE username LIKE $1`, [PREFIX + "%"]
     );
-    console.log(`      ${userDel.rowCount} test kullanicisi silindi`);
     await client.query("COMMIT");
+    console.log(`      ${olayDel.rowCount} test olayi + ${userDel.rowCount} test kullanicisi silindi`);
   } catch (err) {
     try { await client.query("ROLLBACK"); } catch {}
     console.error(`      Temizlik hatasi: ${err.message}`);
@@ -179,24 +204,17 @@ async function cleanup() {
   }
 
   for (const f of [CSV_SV, CSV_UZ, YML_RUN]) {
-    if (fs.existsSync(f)) {
-      fs.unlinkSync(f);
-      console.log(`      ${path.basename(f)} silindi`);
-    }
+    if (fs.existsSync(f)) fs.unlinkSync(f);
   }
-  console.log("      Temizlik tamamlandi.\n");
+  console.log("      Gecici dosyalar silindi. Temizlik tamamlandi.\n");
 }
 
 // ── Artillery ────────────────────────────────────────────────────────────
 
 function runArtillery() {
-  console.log("\n[2/4] Artillery testi baslatiliyor...");
-  console.log(`      Hedef  : ${TARGET_URL}`);
-  console.log(`      VU/s   : ${VU_PER_SEC}`);
-  console.log(`      Sure   : ${TEST_DUR}s`);
-  console.log(`      Rampa  : ${RAMP_DUR}s\n`);
+  console.log("\n[2/3] Artillery testi baslatiliyor...");
+  console.log(`      Hedef: ${TARGET_URL} | VU/s: ${VU_PER_SEC} | Sure: ${TEST_DUR}s | Rampa: ${RAMP_DUR}s\n`);
 
-  // .env degerlerini iceren gecici YAML olustur
   buildRunYaml();
 
   try {
@@ -206,19 +224,7 @@ function runArtillery() {
     );
     return true;
   } catch {
-    console.error("\n      Artillery tamamlandi (esik asilmis olabilir).");
     return false;
-  }
-}
-
-function generateReport() {
-  if (!fs.existsSync(RESULTS_JSON)) return;
-  console.log("\n[3/4] HTML rapor olusturuluyor...");
-  try {
-    execSync(`artillery report "${RESULTS_JSON}" --output "${REPORT_HTML}"`, { stdio: "inherit" });
-    console.log(`      Rapor: ${REPORT_HTML}`);
-  } catch (err) {
-    console.error(`      Rapor hatasi: ${err.message}`);
   }
 }
 
@@ -226,35 +232,30 @@ function generateReport() {
 
 async function main() {
   console.log("==========================================================");
-  console.log("    DiDe - Artillery Yuk Testi Orkestratoru");
+  console.log("    DiDe - Artillery Yuk Testi");
   console.log("==========================================================");
 
   try {
     await pool.query("SELECT 1");
     console.log(`  DB: ${process.env.PGHOST||"localhost"}:${process.env.PGPORT||"5432"}/${process.env.PGDATABASE||"dide"}`);
   } catch (err) {
-    console.error(`\n  DB baglanti hatasi: ${err.message}`);
+    console.error(`  DB baglanti hatasi: ${err.message}`);
     process.exit(1);
   }
 
   if (FLAG_CLEANUP) { await cleanup(); await pool.end(); return; }
 
   if (!fs.existsSync(YML_BASE)) {
-    console.error(`\n  HATA: ${YML_BASE} bulunamadi!`);
+    console.error(`  HATA: ${YML_BASE} bulunamadi!`);
     process.exit(1);
   }
 
   try {
     await createTestUsers();
-    const ok = runArtillery();
-    if (FLAG_REPORT || fs.existsSync(RESULTS_JSON)) generateReport();
-    console.log(ok ? "\n  Test BASARIYLA tamamlandi." : "\n  Test tamamlandi.");
+    runArtillery();
   } finally {
     if (!FLAG_KEEP) { await cleanup(); }
-    else {
-      console.log("\n  --keep-users aktif, temizlik YAPILMADI.");
-      console.log("  Manuel: node run-load-test.js --cleanup-only");
-    }
+    else { console.log("\n  --keep-users aktif. Manuel: node run-load-test.js --cleanup-only"); }
   }
   await pool.end();
 }
@@ -272,7 +273,7 @@ process.on("SIGINT",  emergencyCleanup);
 process.on("SIGTERM", emergencyCleanup);
 
 main().catch(async (err) => {
-  console.error("\nBeklenmeyen hata:", err.message);
+  console.error("\nHata:", err.message);
   if (!FLAG_KEEP) { try { await cleanup(); } catch {} }
   try { await pool.end(); } catch {}
   process.exit(1);
