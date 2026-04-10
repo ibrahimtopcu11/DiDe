@@ -133,6 +133,15 @@ function createOrUpdateMapFromConfig() {
     if (!markersLayer) {
       markersLayer = makeMarkersLayer().addTo(map);
     }
+    if (!__geomLayers.some(x => x.table === 'Events' && x.layer === markersLayer)) {
+      __geomLayers.push({
+        table: 'Events',
+        geomType: 'point',
+        layer: markersLayer,
+        visible: true,
+        z: 100
+      });
+    }
 
     fitMapHeight();
     window.addEventListener('resize', () => {
@@ -147,7 +156,6 @@ function createOrUpdateMapFromConfig() {
   }
   ensureMapLegend(map);
 }
-
 function loadToken() {
   try { authToken = localStorage.getItem(AUTH_KEY) || null; } catch { authToken = null; }
 }
@@ -236,6 +244,7 @@ function setTheme(mode){
     if (b) b.innerHTML = bulbSVG(true);
   }
   
+
   try{ 
     localStorage.setItem(THEME_KEY, mode); 
   }catch{}
@@ -352,11 +361,833 @@ function placeMicIntoMediaBar(){
     locBtn.style.justifyContent = 'center';
     locBtn.onclick = () => {
       geoFindMeToggle();
+      const olayCard = qs('#olay-card');
+      if (olayCard && currentUser && currentUser.role === 'user') {
+        show(olayCard);
+        ensureBackButton();
+      }
     };
     
     videoBtn.insertAdjacentElement('afterend', locBtn);
   }
 }
+/* ==================== LAYER UI ==================== */
+
+let __layerCtrl = null;
+let __geomLayers = []; // [{table, geomType, layer, visible, z}]
+let __eventsGeomLayers = [];
+
+function ensureLayerDrawer(mapInstance, listId){
+  if(!mapInstance) return;
+  if(!listId) listId = 'layer-list';
+
+  // container
+  const c = mapInstance.getContainer();
+  if(c.querySelector('.layer-drawer')) return;
+
+  const drawer = document.createElement('div');
+  drawer.className = 'layer-drawer';
+  drawer.style.cssText = `
+    position:absolute; left:10px; top:120px; z-index:1200;
+    display:flex; align-items:flex-start; gap:0;
+    font-family: Arial, sans-serif;
+  `;
+
+  // notch button
+  const notch = document.createElement('button');
+  notch.className = 'layer-notch';
+  notch.textContent = '≡';
+  notch.style.cssText = `
+    width:40px; height:40px; border-radius:10px 0 0 10px;
+    border:1px solid #cbd5e1; background:#ffffff; cursor:pointer;
+    box-shadow: 0 8px 20px rgba(0,0,0,.08);
+  `;
+
+  // panel
+  const panel = document.createElement('div');
+  panel.className = 'layer-panel hidden';
+  panel.style.cssText = `
+    min-width:260px; max-width:320px;
+    padding:10px; border:1px solid #cbd5e1; border-left:none;
+    border-radius:0 10px 10px 0;
+    background:#ffffff;
+    box-shadow: 0 8px 20px rgba(0,0,0,.08);
+  `;
+
+  panel.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <b>Katmanlar</b>
+      <span style="opacity:.6; font-size:12px;">(göster/gizle + sırala)</span>
+    </div>
+    <div id="${listId}" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;"></div>
+  `;
+
+  notch.onclick = () => panel.classList.toggle('hidden');
+
+  drawer.appendChild(notch);
+  drawer.appendChild(panel);
+  c.appendChild(drawer);
+}
+
+function geomTypeIcon(type){
+  if(type==='line') return '━';
+  if(type==='polygon') return '▧';
+  if(type==='raster') return '🛰';
+  return '●';
+}
+
+function reorderMapLayers(mapInstance, layers){
+  var sorted = layers.filter(function(l){ return l.visible; })
+    .sort(function(a,b){ return (a.z||0) - (b.z||0); });
+  sorted.forEach(function(it){
+    try { it.layer.bringToFront(); } catch(e){}
+  });
+}
+
+function renderLayerList(mapInstance, layers, listId){
+  if(!layers) layers = __geomLayers;
+  if(!listId) listId = 'layer-list';
+  const list = mapInstance.getContainer().querySelector('#' + listId);
+  if(!list) return;
+  list.innerHTML = '';
+
+  layers.forEach((it, idx)=>{
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'border:1px solid #e5e7eb; border-radius:10px; overflow:hidden;';
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 8px;';
+
+    const chk = document.createElement('input');
+    chk.type='checkbox';
+    chk.checked = !!it.visible;
+    chk.onchange = ()=>{
+      it.visible = chk.checked;
+      if(it.visible) it.layer.addTo(mapInstance);
+      else mapInstance.removeLayer(it.layer);
+    };
+
+    const lbl = document.createElement('div');
+    lbl.style.cssText = 'flex:1; display:flex; gap:8px; align-items:center;';
+    lbl.innerHTML = '<span style="font-weight:700;">'+geomTypeIcon(it.geomType)+'</span> <span>'+escapeHtml(it.table)+'</span>';
+
+    row.appendChild(chk);
+    row.appendChild(lbl);
+
+    /* --- Raster bant paneli --- */
+    if(it.geomType === 'raster' && it._georaster){
+      const toggle = document.createElement('button');
+      toggle.textContent = '▼';
+      toggle.className = 'btn ghost';
+      toggle.style.cssText = 'padding:2px 6px; font-size:10px;';
+      row.appendChild(toggle);
+
+      const bandPanel = document.createElement('div');
+      bandPanel.style.cssText = 'display:none; padding:6px 8px; border-top:1px solid #e5e7eb; background:#f9fafb;';
+
+      const nb = it._georaster.numberOfRasters;
+      const labels = ['R','G','B'];
+      const selects = [];
+
+      for(var si=0; si<3; si++){
+        const line = document.createElement('div');
+        line.style.cssText = 'display:flex; align-items:center; gap:6px; margin:3px 0; font-size:12px;';
+
+        const lab = document.createElement('span');
+        lab.style.cssText = 'width:16px; font-weight:700; color:' + ['#dc2626','#16a34a','#2563eb'][si] + ';';
+        lab.textContent = labels[si];
+
+        const sel = document.createElement('select');
+        sel.style.cssText = 'flex:1; padding:2px 4px; font-size:12px; border:1px solid #d1d5db; border-radius:4px;';
+        for(var bi=0; bi<nb; bi++){
+          const opt = document.createElement('option');
+          opt.value = bi;
+          opt.textContent = 'Band ' + (bi+1);
+          if(bi === it._bandMapping[si]) opt.selected = true;
+          sel.appendChild(opt);
+        }
+        selects.push(sel);
+
+        line.appendChild(lab);
+        line.appendChild(sel);
+        bandPanel.appendChild(line);
+      }
+
+      const applyBtn = document.createElement('button');
+      applyBtn.textContent = 'Uygula';
+      applyBtn.className = 'btn';
+      applyBtn.style.cssText = 'margin-top:6px; padding:3px 12px; font-size:12px; width:100%;';
+      applyBtn.onclick = ()=>{
+        var newMapping = [
+          parseInt(selects[0].value),
+          parseInt(selects[1].value),
+          parseInt(selects[2].value)
+        ];
+        it._bandMapping = newMapping;
+        try { mapInstance.removeLayer(it.layer); } catch(e){}
+        it.layer = createRasterLayer(it._georaster, it._bandStats, newMapping);
+        if(it.visible) it.layer.addTo(mapInstance);
+      };
+      bandPanel.appendChild(applyBtn);
+
+      toggle.onclick = ()=>{
+        var open = bandPanel.style.display !== 'none';
+        bandPanel.style.display = open ? 'none' : 'block';
+        toggle.textContent = open ? '▼' : '▲';
+      };
+
+      wrap.appendChild(row);
+      wrap.appendChild(bandPanel);
+    } else {
+      wrap.appendChild(row);
+    }
+
+    list.appendChild(wrap);
+  });
+}
+
+async function loadGeomLayersForMap(isPublic){
+  if(!map) return;
+
+  __geomLayers
+    .filter(x => x.geomType !== 'point' && x.table !== 'Events' && x.geomType !== 'raster')
+    .forEach(x => {
+      try { map.removeLayer(x.layer); } catch {}
+    });
+
+  __geomLayers = __geomLayers.filter(x => x.geomType === 'point' || x.table === 'Events' || x.geomType === 'raster');
+
+  const isSupervisor = currentUser && (currentUser.role === 'supervisor' || currentUser.role === 'admin');
+  const tablesUrl = isSupervisor ? '/api/geom-tables' : '/api/public/geom-tables';
+  const r = await fetch(tablesUrl);
+  if(!r.ok){
+    ensureLayerDrawer(map);
+    renderLayerList(map);
+    return;
+  }
+
+  const data = await r.json();
+  const tables = (data.tables || []).filter(x => x.geomType === 'line' || x.geomType === 'polygon');
+
+  for(const t of tables){
+    const geoUrl = isPublic
+      ? `/api/public/geo/${encodeURIComponent(t.table)}`
+      : `/api/geo/${encodeURIComponent(t.table)}`;
+    const gr = await fetch(geoUrl);
+    if(!gr.ok) continue;
+
+    const fc = await gr.json();
+    if(!fc.features || fc.features.length === 0) continue;
+
+    const layer = L.geoJSON(fc, {
+      style: ()=>({ weight: 4, opacity: 0.85 })
+    });
+
+    layer.addTo(map);
+
+    __geomLayers.push({
+      table: t.table,
+      geomType: t.geomType,
+      layer,
+      visible: true,
+      z: 0
+    });
+  }
+
+  ensureLayerDrawer(map);
+  renderLayerList(map);
+}
+
+async function loadGeomLayersForEventsMap(){
+  if(!eventsMap) return;
+
+  __eventsGeomLayers.forEach(x => {
+    try { eventsMap.removeLayer(x.layer); } catch {}
+  });
+  __eventsGeomLayers = [];
+
+  const r = await fetch('/api/geom-tables');
+  if(!r.ok){
+    ensureLayerDrawer(eventsMap, 'events-layer-list');
+    renderLayerList(eventsMap, __eventsGeomLayers, 'events-layer-list');
+    return;
+  }
+
+  const data = await r.json();
+  const tables = (data.tables || []).filter(x => x.geomType === 'line' || x.geomType === 'polygon');
+
+  for(const t of tables){
+    const gr = await fetch(`/api/geo/${encodeURIComponent(t.table)}`);
+    if(!gr.ok) continue;
+
+    const fc = await gr.json();
+    if(!fc.features || fc.features.length === 0) continue;
+
+    const layer = L.geoJSON(fc, {
+      style: ()=>({ weight: 4, opacity: 0.85 })
+    });
+
+    layer.addTo(eventsMap);
+
+    __eventsGeomLayers.push({
+      table: t.table,
+      geomType: t.geomType,
+      layer,
+      visible: true,
+      z: 0
+    });
+  }
+
+  ensureLayerDrawer(eventsMap, 'events-layer-list');
+  renderLayerList(eventsMap, __eventsGeomLayers, 'events-layer-list');
+}
+
+
+function registerRasterProjection(epsg){
+  if(!window.proj4 || !epsg || epsg === 4326) return;
+  try { if(proj4.defs('EPSG:'+epsg)) return; } catch(e){}
+  if(epsg >= 32601 && epsg <= 32660){
+    var z = epsg - 32600;
+    proj4.defs('EPSG:'+epsg, '+proj=utm +zone='+z+' +datum=WGS84 +units=m +no_defs');
+  } else if(epsg >= 32701 && epsg <= 32760){
+    var z = epsg - 32700;
+    proj4.defs('EPSG:'+epsg, '+proj=utm +zone='+z+' +south +datum=WGS84 +units=m +no_defs');
+  }
+}
+
+function computeBandStats(georaster){
+  var stats = [];
+  for(var b=0; b<georaster.numberOfRasters; b++){
+    var vals = [];
+    var rowStep = Math.max(1, Math.floor(georaster.height / 80));
+    var colStep = Math.max(1, Math.floor(georaster.width / 80));
+    for(var r=0; r<georaster.height; r+=rowStep){
+      for(var c=0; c<georaster.width; c+=colStep){
+        var v = georaster.values[b][r][c];
+        if(v !== 0 && v !== null && v !== undefined && !isNaN(v)) vals.push(v);
+      }
+    }
+    vals.sort(function(a,b){ return a-b; });
+    var lo = vals[Math.floor(vals.length * 0.02)] || 0;
+    var hi = vals[Math.floor(vals.length * 0.98)] || 1;
+    if(hi <= lo) hi = lo + 1;
+    stats.push({ min: lo, max: hi });
+  }
+  return stats;
+}
+
+function createRasterLayer(georaster, bandStats, bandMapping){
+  var bi0 = bandMapping[0], bi1 = bandMapping[1], bi2 = bandMapping[2];
+  var nb = georaster.numberOfRasters;
+
+  var rMin, rScale, gMin, gScale, bMin, bScale;
+  if(nb >= 3){
+    rMin = bandStats[bi0].min; rScale = 255 / (bandStats[bi0].max - rMin);
+    gMin = bandStats[bi1].min; gScale = 255 / (bandStats[bi1].max - gMin);
+    bMin = bandStats[bi2].min; bScale = 255 / (bandStats[bi2].max - bMin);
+  } else {
+    rMin = bandStats[0].min; rScale = 255 / (bandStats[0].max - rMin);
+  }
+
+  var lut = new Uint8Array(65536);
+  for(var i=0; i<65536; i++) lut[i] = i < 256 ? i : 255;
+
+  return new GeoRasterLayer({
+    georaster: georaster,
+    opacity: 1,
+    resolution: 128,
+    debugLevel: 0,
+    pixelValuesToColorFn: nb >= 3
+      ? function(vals){
+          if(!vals[bi0] && !vals[bi1] && !vals[bi2]) return null;
+          var r = lut[((vals[bi0] - rMin) * rScale + 0.5) | 0];
+          var g = lut[((vals[bi1] - gMin) * gScale + 0.5) | 0];
+          var b = lut[((vals[bi2] - bMin) * bScale + 0.5) | 0];
+          return 'rgb('+r+','+g+','+b+')';
+        }
+      : function(vals){
+          if(!vals[0]) return null;
+          var v = lut[((vals[0] - rMin) * rScale + 0.5) | 0];
+          return 'rgb('+v+','+v+','+v+')';
+        }
+  });
+}
+async function loadRasterLayers(mapInstance, layersArray, listId){
+  if(!mapInstance) return;
+
+  var oldRasters = layersArray.filter(function(x){ return x.geomType === 'raster'; });
+  oldRasters.forEach(function(x){ try { mapInstance.removeLayer(x.layer); } catch(e){} });
+
+  var kept = [];
+  for(var i=0; i<layersArray.length; i++){
+    if(layersArray[i].geomType !== 'raster') kept.push(layersArray[i]);
+  }
+  layersArray.length = 0;
+  for(var i=0; i<kept.length; i++) layersArray.push(kept[i]);
+
+  if(typeof parseGeoraster === 'undefined' || typeof GeoRasterLayer === 'undefined'){
+    console.warn('[RASTER] georaster libs not loaded');
+    if(!listId) listId = 'layer-list';
+    ensureLayerDrawer(mapInstance, listId);
+    renderLayerList(mapInstance, layersArray, listId);
+    return;
+  }
+
+  try {
+    var r = await fetch('/api/raster-layers');
+    if(!r.ok) return;
+    var data = await r.json();
+    var rasters = (data && data.layers) || [];
+
+    for(var ri=0; ri<rasters.length; ri++){
+      var rl = rasters[ri];
+      try {
+        var resp = await fetch(rl.tifUrl);
+        var ab = await resp.arrayBuffer();
+        var georaster = await parseGeoraster(ab);
+
+        registerRasterProjection(georaster.projection);
+
+        var bandStats = computeBandStats(georaster);
+        var nb = georaster.numberOfRasters;
+        var defaultMapping = nb >= 3 ? [0,1,2] : [0,0,0];
+
+        var layer = createRasterLayer(georaster, bandStats, defaultMapping);
+        layer.addTo(mapInstance);
+
+        layersArray.push({
+          table: rl.name,
+          geomType: 'raster',
+          layer: layer,
+          visible: true,
+          z: -10,
+          _georaster: georaster,
+          _bandStats: bandStats,
+          _bandMapping: defaultMapping
+        });
+      } catch(e){
+        console.warn('[RASTER] ' + rl.name + ' error:', e);
+      }
+    }
+  } catch(e){
+    console.warn('[RASTER] load error:', e);
+  }
+
+  if(!listId) listId = 'layer-list';
+  ensureLayerDrawer(mapInstance, listId);
+  renderLayerList(mapInstance, layersArray, listId);
+}
+
+/* ==================== VERI_TIPI (Supervisor) ==================== */
+let __veriTipiState = {
+  step: 0,
+  katman_tablo: null,
+  attribute_column: null,
+  values: [],
+  select_all: true,
+  good: true,
+  geomType: null,
+  selectedValues: []
+};
+
+function vt_q(id){ return document.getElementById(id); }
+
+function vt_openModal(){
+  const m = vt_q('modal-veri-tipi');
+  if(!m) return;
+  m.classList.add('show');
+  m.setAttribute('aria-hidden', 'false');
+  m.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function vt_closeModal(){
+  const m = vt_q('modal-veri-tipi');
+  if(!m) return;
+  m.classList.remove('show');
+  m.setAttribute('aria-hidden', 'true');
+  m.style.display = '';
+  document.body.style.overflow = '';
+}
+
+async function vt_refreshTable(){
+  const wrap = vt_q('veri-tipi-table-wrap');
+  if(!wrap) return;
+
+  const r = await fetch('/api/veri-tipi/list');
+  if(!r.ok){
+    wrap.innerHTML = `<div class="muted">Liste alınamadı.</div>`;
+    return;
+  }
+
+  const data = await r.json();
+  const rows = data.rows || [];
+
+  const table = document.createElement('table');
+  table.className = 'table';
+  table.style.width = '100%';
+
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Katman_tablo</th>
+        <th>Attribute_column</th>
+        <th>olay_turu</th>
+        <th>faydali_faydasiz_mi</th>
+        <th>ekleyen</th>
+        <th>işlemler</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+
+  const tb = table.querySelector('tbody');
+
+  rows.forEach(rw=>{
+    const tr = document.createElement('tr');
+
+    const isPoint = !!rw.is_point;
+
+    // sadece point değilse ve satırı ben eklediysem düzenleyebileyim
+    const myId = String(currentUser?.id || currentUser?.sub || '');
+    const canEdit = !isPoint && String(rw.created_by_id) === myId;
+
+    tr.innerHTML = `
+      <td>${escapeHtml(rw.katman_tablo || '')}</td>
+      <td>${escapeHtml(rw.attribute_column || '')}</td>
+      <td>${escapeHtml(rw.olay_turu || '')}</td>
+      <td>${escapeHtml(rw.faydali_faydasiz_mi || '')}</td>
+      <td>${escapeHtml(rw.ekleyen || '')}</td>
+      <td style="display:flex; gap:8px;">
+        <button class="btn ghost" ${canEdit ? '' : 'disabled'} data-act="upd" data-id="${rw.o_id}">Güncelle</button>
+        <button class="btn danger" ${canEdit ? '' : 'disabled'} data-act="del" data-id="${rw.o_id}">Sil</button>
+      </td>
+    `;
+
+    tr.querySelectorAll('button').forEach(b=>{
+      b.onclick = async ()=>{
+        const act = b.getAttribute('data-act');
+        const id  = b.getAttribute('data-id');
+        if(!canEdit) return;
+
+        if(act === 'upd'){
+          // sadece good değiştir
+          const good = confirm('FAYDALI yapmak için OK, FAYDASIZ için Cancel');
+          const rr = await fetch(`/api/veri-tipi/${id}`, {
+            method:'PUT',
+            headers:{ 'Content-Type':'application/json' },
+            body: JSON.stringify({ good })
+          });
+          if(rr.ok) toast('Güncellendi');
+          else toast('Güncellenemedi','error');
+          vt_refreshTable();
+          loadOlayTypes();
+        }
+
+        if(act === 'del'){
+          if(!confirm('Silinsin mi?')) return;
+          const rr = await fetch(`/api/veri-tipi/${id}`, { method:'DELETE' });
+          if(rr.ok) toast('Silindi');
+          else toast('Silinemedi','error');
+          vt_refreshTable();
+          loadOlayTypes();
+        }
+      };
+    });
+
+    tb.appendChild(tr);
+  });
+
+  wrap.innerHTML = '';
+  wrap.appendChild(table);
+}
+
+async function vt_startWizard(){
+  __veriTipiState = {
+    step: 0,
+    katman_tablo: null,
+    attribute_column: null,
+    values: [],
+    select_all: true,
+    good: true,
+    geomType: null,
+    selectedValues: []
+  };
+  vt_renderStep();
+  vt_openModal();
+}
+
+function vt_renderStep(){
+  const title = vt_q('veri-tipi-step-title');
+  const body  = vt_q('veri-tipi-step-body');
+  const btnBack   = vt_q('btn-veri-tipi-back');
+  const btnNext   = vt_q('btn-veri-tipi-next');
+  const btnCancel = vt_q('btn-veri-tipi-cancel');
+
+  if(!title || !body || !btnBack || !btnNext || !btnCancel) return;
+
+  btnCancel.onclick = vt_closeModal;
+
+  btnBack.onclick = ()=>{
+    __veriTipiState.step = Math.max(0, __veriTipiState.step - 1);
+    vt_renderStep();
+  };
+
+  // STEP 0: tablo seç
+  if(__veriTipiState.step === 0){
+    title.textContent = '1) Katman_tablo seç';
+    body.innerHTML = `<div class="muted">Line / Polygon geometry içeren tablolar listelenir.</div><div id="vt-tables"></div>`;
+    btnBack.disabled = true;
+    btnNext.textContent = 'Next';
+
+    btnNext.onclick = ()=>{
+      if(!__veriTipiState.katman_tablo) return toast('Tablo seç', 'error');
+      __veriTipiState.step = 1;
+      vt_renderStep();
+    };
+
+    (async ()=>{
+      const r = await fetch('/api/geom-tables');
+      const d = r.ok ? await r.json() : { tables:[] };
+      const tables = (d.tables||[]).filter(x => x.geomType==='line' || x.geomType==='polygon');
+
+      const wrap = body.querySelector('#vt-tables');
+      wrap.innerHTML = '';
+
+      const sel = document.createElement('select');
+      sel.style.width = '100%';
+      sel.innerHTML = `<option value="">-- Seç --</option>` +
+        tables.map(t => `<option value="${escapeHtml(t.table)}">${escapeHtml(t.table)} (${escapeHtml(t.geomType)})</option>`).join('');
+
+      sel.onchange = ()=>{ __veriTipiState.katman_tablo = sel.value || null; };
+      wrap.appendChild(sel);
+    })();
+
+    return;
+  }
+
+  // STEP 1: kolon seç
+  if(__veriTipiState.step === 1){
+    title.textContent = '2) Attribute_column seç';
+    btnBack.disabled = false;
+    btnNext.textContent = 'Next';
+
+    body.innerHTML = `
+      <div class="muted">Seçtiğin tablonun sütunlarından birini seç.</div>
+      <select id="vt-col" style="width:100%; padding:10px; border:1px solid #e5e7eb; border-radius:10px;">
+        <option value="">-- Yükleniyor... --</option>
+      </select>
+      <div style="margin-top:14px; padding:10px; border:1px solid #e5e7eb; border-radius:10px;">
+        <div class="muted" style="margin-bottom:6px;">Tüm veriyi tek seferde işaretle (opsiyonel):</div>
+        <label style="display:flex; gap:8px; align-items:center; margin:4px 0;">
+          <input type="radio" name="vt-bulk" value="none" checked />
+          <span>Tek tek seçeceğim (sonraki adıma geç)</span>
+        </label>
+        <label style="display:flex; gap:8px; align-items:center; margin:4px 0;">
+          <input type="radio" name="vt-bulk" value="good" />
+          <span>Bütün veri Faydalı olsun</span>
+        </label>
+        <label style="display:flex; gap:8px; align-items:center; margin:4px 0;">
+          <input type="radio" name="vt-bulk" value="bad" />
+          <span>Bütün veri Faydasız olsun</span>
+        </label>
+      </div>
+    `;
+
+    (async ()=>{
+      const rr = await fetch(`/api/table-columns/${encodeURIComponent(__veriTipiState.katman_tablo)}`);
+      const dd = rr.ok ? await rr.json() : { columns:[] };
+      const sel = body.querySelector('#vt-col');
+      sel.innerHTML = `<option value="">-- Sütun Seç --</option>` +
+        (dd.columns||[]).map(c => {
+          const selected = c === __veriTipiState.attribute_column ? 'selected' : '';
+          return `<option value="${escapeHtml(c)}" ${selected}>${escapeHtml(c)}</option>`;
+        }).join('');
+      sel.onchange = ()=>{ __veriTipiState.attribute_column = sel.value || null; };
+    })();
+
+    btnNext.onclick = async ()=>{
+      if(!__veriTipiState.attribute_column) return toast('Sütun seç', 'error');
+
+      const bulkVal = body.querySelector('input[name="vt-bulk"]:checked')?.value || 'none';
+
+      const rr = await fetch('/api/veri-tipi/wizard/values', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          katman_tablo: __veriTipiState.katman_tablo,
+          attribute_column: __veriTipiState.attribute_column
+        })
+      });
+
+      if(!rr.ok) return toast('Değerler alınamadı', 'error');
+
+      const dd = await rr.json();
+      __veriTipiState.values = dd.values || [];
+      __veriTipiState.geomType = dd.geomType || null;
+
+      if(bulkVal === 'good' || bulkVal === 'bad'){
+        __veriTipiState.select_all = true;
+        __veriTipiState.good = bulkVal === 'good';
+        const payload = {
+          katman_tablo: __veriTipiState.katman_tablo,
+          attribute_column: __veriTipiState.attribute_column,
+          select_all: true,
+          values: [],
+          good: __veriTipiState.good
+        };
+        const cr = await fetch('/api/veri-tipi/wizard/create', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if(!cr.ok) return toast('Kaydedilemedi','error');
+        toast('Kaydedildi');
+        vt_closeModal();
+        vt_refreshTable();
+        loadOlayTypes();
+        loadGeomLayersForMap(false);
+        return;
+      }
+
+      __veriTipiState.step = 2;
+      vt_renderStep();
+    };
+
+    return;
+  }
+
+  // STEP 2: değer seç
+  if(__veriTipiState.step === 2){
+    title.textContent = '3) olay_turu değerlerini seç';
+    btnBack.disabled = false;
+    btnNext.textContent = 'Next';
+
+    body.innerHTML = `
+      <label style="display:flex; gap:8px; align-items:center;">
+        <input id="vt-all" type="checkbox" ${__veriTipiState.select_all ? 'checked' : ''} />
+        <span>Bu sütundaki değerlerin hepsini seç</span>
+      </label>
+      <div id="vt-values" style="margin-top:10px; max-height:240px; overflow:auto; border:1px solid #e5e7eb; border-radius:10px; padding:10px;"></div>
+    `;
+
+    const all = body.querySelector('#vt-all');
+    const list = body.querySelector('#vt-values');
+
+    all.onchange = ()=>{
+      __veriTipiState.select_all = all.checked;
+      vt_renderStep();
+    };
+
+    if(__veriTipiState.select_all){
+      list.innerHTML = `<div class="muted">Hepsi seçili (${__veriTipiState.values.length} değer)</div>`;
+      btnNext.onclick = ()=>{
+        __veriTipiState.step = 3;
+        vt_renderStep();
+      };
+      return;
+    }
+
+    const chosen = new Set(__veriTipiState.selectedValues || []);
+    list.innerHTML = (__veriTipiState.values||[]).map(v=>{
+      const vv = String(v);
+      const checked = chosen.has(vv) ? 'checked' : '';
+      return `
+        <label style="display:flex; gap:8px; align-items:center; margin:6px 0;">
+          <input type="checkbox" data-v="${escapeHtml(vv)}" ${checked} />
+          <span>${escapeHtml(vv)}</span>
+        </label>
+      `;
+    }).join('');
+
+    list.querySelectorAll('input[type="checkbox"]').forEach(ch=>{
+      ch.onchange = ()=>{
+        const v = ch.getAttribute('data-v');
+        if(ch.checked) chosen.add(v);
+        else chosen.delete(v);
+        __veriTipiState.selectedValues = Array.from(chosen);
+      };
+    });
+
+    btnNext.onclick = ()=>{
+      if(!(__veriTipiState.selectedValues||[]).length) return toast('En az 1 değer seç', 'error');
+      __veriTipiState.step = 3;
+      vt_renderStep();
+    };
+
+    return;
+  }
+
+  // STEP 3: good/bad + kaydet
+  if(__veriTipiState.step === 3){
+    title.textContent = '4) Faydalı / Faydasız seç';
+    btnBack.disabled = false;
+    btnNext.textContent = 'Kaydet';
+
+    body.innerHTML = `
+      <label style="display:flex; gap:10px; align-items:center; margin:8px 0;">
+        <input type="radio" name="vt-good" value="true" ${__veriTipiState.good ? 'checked' : ''} />
+        <span>Faydalı</span>
+      </label>
+      <label style="display:flex; gap:10px; align-items:center; margin:8px 0;">
+        <input type="radio" name="vt-good" value="false" ${!__veriTipiState.good ? 'checked' : ''} />
+        <span>Faydasız</span>
+      </label>
+
+      <div class="muted" style="margin-top:10px;">
+        Seçilen değerler için hedef tabloya <b>olay_turu</b> kolonu eklenir ve uygun satırlara <b>o_id</b> yazılır.
+        Seçilmemiş satırlar NULL kalır (None) ve haritada görünmez.
+      </div>
+    `;
+
+    body.querySelectorAll('input[name="vt-good"]').forEach(r=>{
+      r.onchange = ()=> __veriTipiState.good = r.value === 'true';
+    });
+
+    btnNext.onclick = async ()=>{
+      const payload = {
+        katman_tablo: __veriTipiState.katman_tablo,
+        attribute_column: __veriTipiState.attribute_column,
+        select_all: __veriTipiState.select_all,
+        values: __veriTipiState.select_all ? [] : (__veriTipiState.selectedValues||[]),
+        good: __veriTipiState.good
+      };
+
+      const rr = await fetch('/api/veri-tipi/wizard/create', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if(!rr.ok) return toast('Kaydedilemedi','error');
+
+      toast('Kaydedildi');
+      vt_closeModal();
+      vt_refreshTable();
+      loadOlayTypes();
+
+      // login sonrası layer'ları da yenile
+      loadGeomLayersForMap(false);
+    };
+
+    return;
+  }
+}
+
+function wireVeriTipiUI(){
+  const btnAdd = vt_q('btn-veri-tipi-add');
+  if(btnAdd) btnAdd.onclick = vt_startWizard;
+
+  const bBack = vt_q('btn-veri-tipi-back');
+  const bCancel = vt_q('btn-veri-tipi-cancel');
+  const bCancelX = vt_q('btn-veri-tipi-cancel-x');
+  if(bBack) bBack.textContent = 'Back';
+  if(bCancel) bCancel.textContent = 'Cancel';
+  if(bCancelX) bCancelX.onclick = vt_closeModal;
+
+  vt_refreshTable();
+}
+
 
 /* ----------------- Map ----------------- */
 const WORLD_BOUNDS = L.latLngBounds([-85, -180], [85, 180]);
@@ -3107,6 +3938,7 @@ async function loadOlayTypes() {
     if (sel) {
       sel.innerHTML = `<option value="">-- ${t('pleaseSelect')} --</option>`;
       list.forEach(o => {
+        if(o.is_point === false) return;
         const opt = document.createElement('option');
         opt.value = String(o.o_id);
         opt.textContent = o.o_adi;
@@ -3213,7 +4045,9 @@ function initTabs() {
       btn.classList.add('active');
       const targetContent = qs(`#${targetTab}`);
       if (targetContent) targetContent.classList.add('active');
-
+      if (targetTab === 'veri-tipi-tab') {
+        try { vt_refreshTable(); } catch {}
+      }
       const mapEl = document.getElementById('map');
       if (mapEl) {
         if (targetTab === 'events-tab') {
@@ -3807,9 +4641,6 @@ function geoFindMeToggle(){
     return; 
   }
   geoFindMeStart();
-  
-  if (currentUser && currentUser.role === 'user') {
-  }
 }
 
 function geoFindMeStart() {
@@ -3832,23 +4663,6 @@ function geoFindMeStart() {
 
       map.setView(ll, Math.max(map.getZoom(), 17), { animate:true });
       startLiveLocation();
-      
-      if (currentUser && currentUser.role === 'user') {
-        setTimeout(() => {
-          const olayCard = qs('#olay-card');
-          if (olayCard) {
-            show(olayCard);
-            ensureBackButton();
-            
-            const mapEl = document.getElementById('map');
-            if (mapEl) {
-              mapEl.classList.add('blur-background');
-            }
-            
-            pushOverlayState('olay-card');
-          }
-        }, 1000);
-      }
     },
     () => { setLocateUI(false); },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
@@ -4486,12 +5300,6 @@ function reflectAuth(){
     headerLocBtn.style.display = shouldShow ? 'inline-flex' : 'none';
   }
 
-  const videoBtn = qs('#btn-add-video');
-  if (videoBtn) {
-    const shouldShowVideo = !currentUser || currentUser.role !== 'user';
-    videoBtn.style.display = shouldShowVideo ? 'inline-flex' : 'none';
-  }
-
   if (currentUser){
     if (who) { 
       who.textContent = t('greeting', { username: currentUser.username, role: currentUser.role }); 
@@ -4621,7 +5429,7 @@ function setSupervisorMode(mode) {
     show(adminCard);
     show(olayCard);
     
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         ensureEventsMap(); 
         ensureEventsExportControl(); 
@@ -4629,7 +5437,18 @@ function setSupervisorMode(mode) {
       } catch(e) {
         console.warn('[setSupervisorMode] Map update error:', e);
       }
+      try {
+        await loadGeomLayersForEventsMap();
+      } catch(e) {
+        console.warn('[setSupervisorMode] Events geom layers error:', e);
+      }
+      try {
+        await loadRasterLayers(eventsMap, __eventsGeomLayers, 'events-layer-list');
+      } catch(e) {
+        console.warn('[setSupervisorMode] Events raster layers error:', e);
+      }
     }, 100);
+
     
     setTimeout(() => {
       try { 
@@ -4768,6 +5587,18 @@ async function login(){
     resetLoginForm();
     attachMapClickForLoggedIn();
 
+    try {
+      await loadGeomLayersForMap(false);
+    } catch(e) {
+      console.warn('[LOGIN] Geom layers reload error:', e);
+    }
+
+    try {
+      await loadRasterLayers(map, __geomLayers, 'layer-list');
+    } catch(e) {
+      console.warn('[LOGIN] Raster layers reload error:', e);
+    }
+
     const mapEl = document.getElementById('map');
     if (mapEl) mapEl.classList.remove('blur-background');
     
@@ -4862,10 +5693,24 @@ async function logout(){
 
   removeDownloadIfAny();
   __eventsExportCtrlAdded = false;
-  
-  document.documentElement.style.overflow = '';
-  document.body.style.overflow = '';
-  
+
+  __geomLayers
+    .filter(x => x.geomType !== 'point' && x.table !== 'Events')
+    .forEach(x => { try { map.removeLayer(x.layer); } catch {} });
+  __geomLayers = __geomLayers.filter(x => x.geomType === 'point' || x.table === 'Events');
+
+  try {
+    await loadGeomLayersForMap(true);
+  } catch(e) {
+    console.warn('[LOGOUT] Geom layers reload error:', e);
+  }
+
+  try {
+    await loadRasterLayers(map, __geomLayers, 'layer-list');
+  } catch(e) {
+    console.warn('[LOGOUT] Raster layers reload error:', e);
+  }
+
   try {
     if (map) {
       const lat = Number(APP_CONFIG.mapInitialLat);
@@ -4878,7 +5723,6 @@ async function logout(){
     console.warn('Map could not be reloaded:', e);
   }
 }
-
 function ensureAuthBackButton(cardSelector){
   const card = qs(cardSelector);
   if (!card) return;
@@ -5228,10 +6072,6 @@ function attachMapClickForLoggedIn(){
   try { map?.off('click'); } catch {}
   if (!map) return;
   
-  if (currentUser && currentUser.role === 'user') {
-    return;
-  }
-  
   map.on('click', (e) => {
     stopLiveLocation(); 
     
@@ -5256,18 +6096,20 @@ function attachMapClickForLoggedIn(){
         .bindPopup(t('selectedLocation'));
     }
     
-    const olayCard = qs('#olay-card');
-    if (olayCard) {
-      show(olayCard);
-      ensureBackButton();
-      
-      const mapEl = document.getElementById('map');
-      if (mapEl) {
-        mapEl.classList.add('blur-background');
+    if (currentUser && currentUser.role === 'user') {
+      const olayCard = qs('#olay-card');
+      if (olayCard) {
+        show(olayCard);
+        ensureBackButton();
+        
+        const mapEl = document.getElementById('map');
+        if (mapEl) {
+          mapEl.classList.add('blur-background');
+        }
+        pushOverlayState('olay-card');
+        
+        ensureMapLegend(map);
       }
-      pushOverlayState('olay-card');
-      
-      ensureMapLegend(map);
     }
   });
 }
@@ -5327,6 +6169,15 @@ window.addEventListener('popstate', (event) => {
     btn.style.display = 'none';
     btn.onclick = () => {
       geoFindMeToggle();
+      if (currentUser && currentUser.role === 'user') {
+        const olayCard = qs('#olay-card');
+        if (olayCard) {
+          show(olayCard);
+          ensureBackButton();
+          const mapEl = document.getElementById('map');
+          if (mapEl) mapEl.classList.add('blur-background');
+        }
+      }
     };
     
     const themeBtn = qs('#btn-theme-toggle');
@@ -5407,12 +6258,38 @@ window.addEventListener('popstate', (event) => {
     } else {
       try { if (markersLayer) markersLayer.clearLayers(); } catch {}
     }
+
+    try {
+      await loadGeomLayersForMap(true);
+    } catch(e) {
+      console.warn('[INIT] Public geom layers error:', e);
+    }
+
+    try {
+      await loadRasterLayers(map, __geomLayers, 'layer-list');
+    } catch(e) {
+      console.warn('[INIT] Public raster layers error:', e);
+    }
+
     try { ensureMapLegend(map); } catch {}
   } else {
     goDefaultScreen();
     attachMapClickForLoggedIn();
     
     try { ensureMapLegend(map); } catch {}
+  }
+
+  if (currentUser && currentUser.role === 'user') {
+    try {
+      await loadGeomLayersForMap(false);
+    } catch(e) {
+      console.warn('[INIT] User geom layers error:', e);
+    }
+    try {
+      await loadRasterLayers(map, __geomLayers, 'layer-list');
+    } catch(e) {
+      console.warn('[INIT] User raster layers error:', e);
+    }
   }
 
   if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'supervisor')) {
@@ -5422,13 +6299,37 @@ window.addEventListener('popstate', (event) => {
       refreshAdminEvents()
     ]);
     
-    setTimeout(() => {
+    try {
+      await loadGeomLayersForMap(false);
+    } catch(e) {
+      console.warn('[INIT] loadGeomLayersForMap error:', e);
+    }
+
+    wireVeriTipiUI();
+
+    try {
+      await loadRasterLayers(map, __geomLayers, 'layer-list');
+    } catch(e) {
+      console.warn('[INIT] Supervisor raster layers error:', e);
+    }
+
+    setTimeout(async () => {
       try {
         ensureEventsMap();
         ensureEventsExportControl();
         syncEventsMapWithFilteredEvents();
       } catch(e) {
         console.warn('[INIT] Admin map error:', e);
+      }
+      try {
+        await loadGeomLayersForEventsMap();
+      } catch(e) {
+        console.warn('[INIT] Events geom layers error:', e);
+      }
+      try {
+        await loadRasterLayers(eventsMap, __eventsGeomLayers, 'events-layer-list');
+      } catch(e) {
+        console.warn('[INIT] Events raster layers error:', e);
       }
     }, 500);
     
@@ -5727,6 +6628,8 @@ async function updateUIWithNewLanguage() {
     }
   }
 }
+
+
 function updateTableHeaders() {
   
   function rebuildHeader(header, newText, hasFilterIcon = true) {
@@ -5857,5 +6760,52 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeLangBtn) {
       activeLangBtn.classList.add('active');
     }
+  }
+
+  /* --- Veri Tipi + butonu yedek bağlantı --- */
+  const vtAddBtn = document.getElementById('btn-veri-tipi-add');
+  if(vtAddBtn){
+    vtAddBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        vt_startWizard();
+      } catch(err) {
+        console.error('vt_startWizard error:', err);
+        /* fallback: doğrudan modalı aç */
+        var modal = document.getElementById('modal-veri-tipi');
+        if(modal){
+          modal.classList.add('show');
+          modal.setAttribute('aria-hidden','false');
+          modal.style.display = 'flex';
+        }
+      }
+    });
+  }
+
+  const vtCancelX = document.getElementById('btn-veri-tipi-cancel-x');
+  if(vtCancelX){
+    vtCancelX.addEventListener('click', function(){
+      var modal = document.getElementById('modal-veri-tipi');
+      if(modal){
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden','true');
+        modal.style.display = '';
+      }
+      document.body.style.overflow = '';
+    });
+  }
+
+  const vtCancelBtn = document.getElementById('btn-veri-tipi-cancel');
+  if(vtCancelBtn){
+    vtCancelBtn.addEventListener('click', function(){
+      var modal = document.getElementById('modal-veri-tipi');
+      if(modal){
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden','true');
+        modal.style.display = '';
+      }
+      document.body.style.overflow = '';
+    });
   }
 });

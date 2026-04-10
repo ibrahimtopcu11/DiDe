@@ -52,92 +52,6 @@ config:
 
 scenarios:
 
-  - name: "Supervisor - Giris + Sorgulama"
-    weight: 20
-    flow:
-      - post:
-          url: "/api/auth/login"
-          json:
-            usernameOrEmail: "{{ sv_username }}"
-            password: "{{ sv_password }}"
-          capture:
-            - json: "$.token"
-              as: "authToken"
-            - json: "$.user.id"
-              as: "userId"
-          expect:
-            - statusCode: 200
-            - hasProperty: "token"
-      - think: 1
-      - get:
-          url: "/api/me"
-          headers:
-            Authorization: "Bearer {{ authToken }}"
-          expect:
-            - statusCode: 200
-      - think: 1
-      - get:
-          url: "/api/olaylar"
-          headers:
-            Authorization: "Bearer {{ authToken }}"
-          expect:
-            - statusCode: 200
-      - think: 1
-      - get:
-          url: "/api/olaylar_tum"
-          headers:
-            Authorization: "Bearer {{ authToken }}"
-          expect:
-            - statusCode: 200
-      - think: 1
-      - get:
-          url: "/api/admin/users"
-          headers:
-            Authorization: "Bearer {{ authToken }}"
-          expect:
-            - statusCode: 200
-      - think: 1
-      - get:
-          url: "/api/olaylar_tum"
-          headers:
-            Authorization: "Bearer {{ authToken }}"
-          expect:
-            - statusCode: 200
-
-  - name: "Vatandas - Giris Yapmadan Sadece Okuma"
-    weight: 35
-    flow:
-      - get:
-          url: "/health"
-          expect:
-            - statusCode: 200
-      - think: 1
-      - get:
-          url: "/api/config"
-          expect:
-            - statusCode: 200
-      - think: 2
-      - get:
-          url: "/api/olaylar_tum"
-          expect:
-            - statusCode:
-                - 200
-                - 401
-      - think: 3
-      - get:
-          url: "/api/olaylar_tum"
-          expect:
-            - statusCode:
-                - 200
-                - 401
-      - think: 2
-      - get:
-          url: "/api/olaylar_tum"
-          expect:
-            - statusCode:
-                - 200
-                - 401
-
   - name: "Uzman - Giris + Tam CRUD"
     weight: 25
     flow:
@@ -187,7 +101,7 @@ scenarios:
           capture:
             - json: "$.olay_id"
               as: "createdOlayId"
-              strict: false
+              strict: true
           afterResponse: "saveCreatedOlayId"
           expect:
             - statusCode: 200

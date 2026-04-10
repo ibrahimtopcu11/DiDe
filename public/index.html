@@ -7,6 +7,7 @@
   <title>Loading…</title>
   <link id="site-favicon" rel="icon" href="/favicon.ico" />
 
+  <!-- Preload icon assets -->
   <link rel="preload" as="image" href="/camera.svg" />
   <link rel="preload" as="image" href="/video.svg" />
   <link rel="preload" as="image" href="/mic.svg" />
@@ -489,6 +490,7 @@
           <button class="tab-btn active" data-tab="types-tab" data-i18n="eventTypes">Event Types</button>
           <button class="tab-btn" data-tab="users-tab" data-i18n="users">Users</button>
           <button class="tab-btn" data-tab="events-tab" data-i18n="events">Events</button>
+          <button class="tab-btn" data-tab="veri-tipi-tab">Veri Tipi</button>
         </div>
 
         <div id="types-tab" class="tab-content active">
@@ -505,7 +507,7 @@
                 </label>
                 <label style="display:inline-flex; align-items:center; gap:4px;">
                   <input type="radio" name="new-type-good" id="new-type-good-no" value="false" style="margin:0;" />
-                  <span data-i18n="notBeneficial">Harmful</span>
+                  <span data-i18n="notBeneficial">Not Beneficial</span>
                 </label>
               </div>
               <div>
@@ -634,9 +636,42 @@
             </div>
           </div>
         </div>
+
+        <!-- Veri Tipi Tab -->
+        <div id="veri-tipi-tab" class="tab-content">
+          <section id="panel-veri-tipi">
+            <div class="row" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+              <h3 style="margin:0;">Veri Tipi</h3>
+              <button id="btn-veri-tipi-add" class="btn" title="Ekle">+</button>
+            </div>
+
+            <div id="veri-tipi-table-wrap" style="margin-top:10px;"></div>
+          </section>
+        </div>
       </section>
     </aside>
   </main>
+
+  <!-- Wizard Modal (Veri Tipi) -->
+  <div id="modal-veri-tipi" class="modal" aria-hidden="true">
+    <div class="box">
+      <div class="head">
+        <h3 id="veri-tipi-step-title" style="margin:0;">Veri Tipi Ekle</h3>
+        <button id="btn-veri-tipi-cancel-x" class="btn ghost" type="button">×</button>
+      </div>
+
+      <div id="veri-tipi-step-body"></div>
+
+      <div style="display:flex; justify-content:space-between; gap:10px; margin-top:12px;">
+        <button id="btn-veri-tipi-back" class="btn ghost">Back</button>
+        <div style="display:flex; gap:10px;">
+          <button id="btn-veri-tipi-cancel" class="btn ghost">Cancel</button>
+          <button id="btn-veri-tipi-next" class="btn">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- PHOTO CAMERA MODAL -->
   <div id="photo-modal" class="modal" aria-hidden="true">
@@ -691,7 +726,7 @@
         </label>
         <label style="display:inline-flex; align-items:center; gap:4px;">
           <input type="radio" name="update-type-good" id="update-type-good-no" value="false" style="margin:0;" />
-          <span data-i18n="notBeneficial">Harmful</span>
+          <span data-i18n="notBeneficial">Not Beneficial</span>
         </label>
       </div>
       <div class="row gap6" style="margin-top:8px;">
@@ -754,6 +789,9 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/proj4@2.9.2/dist/proj4.js"></script>
+  <script src="https://unpkg.com/georaster@1.6.0/dist/georaster.browser.bundle.min.js"></script>
+  <script src="https://unpkg.com/georaster-layer-for-leaflet@3.10.0/dist/georaster-layer-for-leaflet.min.js"></script>
 
   <script>
     (function(){
