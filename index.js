@@ -1,4 +1,8 @@
 // index.js 
+// KRITIK: bcrypt libuv thread pool kullanir. Varsayilan 4 thread, yuk altinda yetersiz kalir.
+// Bu satir TUM require'lardan ONCE olmali, cunku libuv pool ilk kullanimda olusturulur.
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '64';
+
 require('dotenv').config();
 
 const express = require('express');
@@ -2076,14 +2080,16 @@ app.get('/api/olaylar', requireAuth, async (req, res) => {
   }
 });
 
+// olaylar_tum icin kisa sureli sorgu onbellegi — DB baski azaltir
+let _olaylarTumCache = { data: null, ts: 0 };
+const OLAYLAR_TUM_CACHE_TTL = 3000; // 3 saniye
+
 app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
   const isAnon = !req.user;
 
   if (isAnon) {
     const showGood = SHOW_GOOD_EVENTS_ON_LOGIN;
     const showBad = SHOW_BAD_EVENTS_ON_LOGIN;
-    
-    console.log('[/api/olaylar_tum] Anonim istek - showGood:', showGood, 'showBad:', showBad);
     
     if (!showGood && !showBad) {
       return res.status(401).json({ error: 'unauthenticated', message: getErrorMessage(req, 'unauthenticated') });
@@ -2094,34 +2100,45 @@ app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
     const myId = req.user?.id || 0;
     const myUser = req.user?.username || '';
     
-    const r = await pool.query(
-      `
-      SELECT
-        o.olay_id,
-        o.enlem,
-        o.boylam,
-        o.olay_turu AS olay_turu_id,
-        l.o_adi     AS olay_turu_adi,
-        l.good      AS olay_turu_good,
-        o.aciklama,
-        o.created_by_id              AS created_by_id,
-        o.created_by_name            AS created_by_username,
-        o.created_at,
-        o.photo_urls,
-        o.video_urls,
-        ((o.created_by_id = $1) OR (o.created_by_name = $2)) AS is_mine
-      FROM olay o
-      LEFT JOIN olaylar l ON l.o_id = o.olay_turu
-      WHERE COALESCE(o.active, true) = true
-      ORDER BY o.olay_id DESC
-      `,
-      [myId, myUser]
-    );
+    // Onbellekten al veya DB'den cek
+    let baseRows;
+    const now = Date.now();
+    if (_olaylarTumCache.data && now - _olaylarTumCache.ts < OLAYLAR_TUM_CACHE_TTL) {
+      baseRows = _olaylarTumCache.data;
+    } else {
+      const r = await pool.query(
+        `
+        SELECT
+          o.olay_id,
+          o.enlem,
+          o.boylam,
+          o.olay_turu AS olay_turu_id,
+          l.o_adi     AS olay_turu_adi,
+          l.good      AS olay_turu_good,
+          o.aciklama,
+          o.created_by_id              AS created_by_id,
+          o.created_by_name            AS created_by_username,
+          o.created_at,
+          o.photo_urls,
+          o.video_urls
+        FROM olay o
+        LEFT JOIN olaylar l ON l.o_id = o.olay_turu
+        WHERE COALESCE(o.active, true) = true
+        ORDER BY o.olay_id DESC
+        `
+      );
+      baseRows = r.rows.map((row) => ({
+        ...row,
+        photo_urls: parseJsonText(row.photo_urls),
+        video_urls: parseJsonText(row.video_urls),
+      }));
+      _olaylarTumCache = { data: baseRows, ts: now };
+    }
 
-    let rows = r.rows.map((row) => ({
+    // is_mine hesapla (kullaniciya ozel, cache disinda)
+    let rows = baseRows.map((row) => ({
       ...row,
-      photo_urls: parseJsonText(row.photo_urls),
-      video_urls: parseJsonText(row.video_urls),
+      is_mine: (row.created_by_id === myId) || (row.created_by_username === myUser),
     }));
 
     if (isAnon) {
@@ -2143,8 +2160,6 @@ app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
         created_by_username: null,
         is_mine: false,
       }));
-      
-      console.log('[/api/olaylar_tum] Filtreleme sonrası olay sayısı:', rows.length);
     }
 
     res.json(rows);
@@ -2255,6 +2270,7 @@ app.post('/api/submit_olay', requireAuth, async (req, res) => {
     const pId = p_id === '' || p_id == null ? null : parseInt(p_id, 10);
     if (Number.isInteger(pId)) await pool.query('INSERT INTO kayit (p_id, olay_id) VALUES ($1,$2)', [pId, olay_id]);
 
+    _olaylarTumCache.data = null; // Cache temizle
     res.json({ success: true, olay_id, photo_urls: photoUrls, video_urls: videoUrls });
   } catch (e) {
     console.error('submit_olay error:', e);
@@ -2323,6 +2339,7 @@ app.patch('/api/olay/:id', requireAuth, async (req, res) => {
     const r = await pool.query(q, vals);
     if (!r.rowCount) return res.status(404).json({ error: 'bulunamadi', message: getErrorMessage(req, 'bulunamadi') });
 
+    _olaylarTumCache.data = null; // Cache temizle
     res.json({
       ok: true,
       olay_id: r.rows[0].olay_id,
@@ -2363,6 +2380,7 @@ app.delete('/api/olay/:id', requireAuth, async (req, res) => {
     await client.query('COMMIT');
 
     if (!r.rowCount) return res.status(404).json({ error: 'bulunamadi', message: getErrorMessage(req, 'bulunamadi') });
+    _olaylarTumCache.data = null; // Cache temizle
     res.set('X-UI-Remove', '1');
     res.json({ ok: true, olay_id: r.rows[0].olay_id, ui_remove: true });
   } catch (e) {
@@ -3108,7 +3126,7 @@ async function ensureOlaylarSchema(){
 }
 
 ensureOlaylarSchema().then(() => {
-  const server = app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+  const server = app.listen(PORT, '0.0.0.0', 2048, () => console.log(`Server running at http://localhost:${PORT}`));
   // Yuk altinda baglanti kopmasini onle
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;

@@ -28,28 +28,28 @@ td{padding:8px 12px;border-bottom:1px solid #f0f0f0}tr:hover{background:#fafafa}
 <body>
 <div class="header">
   <h1>DiDe - Artillery Load Test Report</h1>
-  <p>http://localhost:3000 | 100 VU/s | 60s duration | 2026-04-11 08:22:04</p>
+  <p>http://localhost:3000 | 100 VU/s | 60s duration | 2026-04-11 08:33:08</p>
 </div>
 <div class="container">
 
 <div class="cards">
-  <div class="card blue"><div class="label">Total Requests</div><div class="value">15.725</div></div>
-  <div class="card green"><div class="label">Successful (200)</div><div class="value">5.607</div></div>
-  <div class="card red"><div class="label">Server Errors (5xx)</div><div class="value">1231</div></div>
-  <div class="card orange"><div class="label">Timeouts</div><div class="value">1.971</div></div>
+  <div class="card blue"><div class="label">Total Requests</div><div class="value">16.430</div></div>
+  <div class="card green"><div class="label">Successful (200)</div><div class="value">6.315</div></div>
+  <div class="card red"><div class="label">Server Errors (5xx)</div><div class="value">1156</div></div>
+  <div class="card orange"><div class="label">Timeouts</div><div class="value">1.899</div></div>
   <div class="card blue"><div class="label">VUs Created</div><div class="value">8.020</div></div>
-  <div class="card red"><div class="label">Success Rate</div><div class="value">16.7%</div></div>
+  <div class="card red"><div class="label">Success Rate</div><div class="value">18.1%</div></div>
 </div>
 
 <div class="section">
   <h2>Response Time (ms)</h2>
   <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
-    <div class="card"><div class="label">Min</div><div class="value" style="font-size:20px">1</div></div>
-    <div class="card"><div class="label">Median</div><div class="value" style="font-size:20px">3678</div></div>
-    <div class="card"><div class="label">Mean</div><div class="value" style="font-size:20px">4042</div></div>
-    <div class="card orange"><div class="label">p95</div><div class="value" style="font-size:20px">9230</div></div>
+    <div class="card"><div class="label">Min</div><div class="value" style="font-size:20px">0</div></div>
+    <div class="card"><div class="label">Median</div><div class="value" style="font-size:20px">3753</div></div>
+    <div class="card"><div class="label">Mean</div><div class="value" style="font-size:20px">3891</div></div>
+    <div class="card orange"><div class="label">p95</div><div class="value" style="font-size:20px">9048</div></div>
     <div class="card red"><div class="label">p99</div><div class="value" style="font-size:20px">9801</div></div>
-    <div class="card red"><div class="label">Max</div><div class="value" style="font-size:20px">10006</div></div>
+    <div class="card red"><div class="label">Max</div><div class="value" style="font-size:20px">10004</div></div>
   </div>
 </div>
 
@@ -67,7 +67,7 @@ td{padding:8px 12px;border-bottom:1px solid #f0f0f0}tr:hover{background:#fafafa}
   <h2>HTTP Status Codes</h2>
   <table>
     <tr><th>Code</th><th>Count</th><th>Ratio</th><th>Visual</th></tr>
-    <tr><td><span class="badge" style="background:#4caf50">200</span></td><td>5.607</td><td>60.2%</td><td><div class="bar" style="width:180.60000000000002px;background:#4caf50"></div></td></tr><tr><td><span class="badge" style="background:#f57c00">401</span></td><td>2.475</td><td>26.6%</td><td><div class="bar" style="width:79.80000000000001px;background:#f57c00"></div></td></tr><tr><td><span class="badge" style="background:#f44336">500</span></td><td>1.231</td><td>13.2%</td><td><div class="bar" style="width:39.599999999999994px;background:#f44336"></div></td></tr>
+    <tr><td><span class="badge" style="background:#4caf50">200</span></td><td>6.315</td><td>62.8%</td><td><div class="bar" style="width:188.39999999999998px;background:#4caf50"></div></td></tr><tr><td><span class="badge" style="background:#f57c00">401</span></td><td>2.590</td><td>25.7%</td><td><div class="bar" style="width:77.1px;background:#f57c00"></div></td></tr><tr><td><span class="badge" style="background:#f44336">500</span></td><td>1.156</td><td>11.5%</td><td><div class="bar" style="width:34.5px;background:#f44336"></div></td></tr>
   </table>
 </div>
 
@@ -75,7 +75,7 @@ td{padding:8px 12px;border-bottom:1px solid #f0f0f0}tr:hover{background:#fafafa}
   <h2>Errors</h2>
   <table>
     <tr><th>Error Type</th><th>Count</th><th>Description</th></tr>
-    <tr><td><b>Failed capture or match</b></td><td>267</td><td>Response did not match expected format</td></tr><tr><td><b>ECONNREFUSED</b></td><td>4.441</td><td>Server refused connection</td></tr><tr><td><b>ETIMEDOUT</b></td><td>1.971</td><td>Server did not respond (timeout)</td></tr>
+    <tr><td><b>ECONNREFUSED</b></td><td>4.470</td><td>Server refused connection</td></tr><tr><td><b>Failed capture or match</b></td><td>202</td><td>Response did not match expected format</td></tr><tr><td><b>ETIMEDOUT</b></td><td>1.899</td><td>Server did not respond (timeout)</td></tr>
   </table>
 </div>
 
@@ -83,7 +83,7 @@ td{padding:8px 12px;border-bottom:1px solid #f0f0f0}tr:hover{background:#fafafa}
   <h2>Endpoint Performance</h2>
   <table>
     <tr><th>Endpoint</th><th>Requests</th><th>Min</th><th>Median</th><th>p95</th><th>p99</th><th>Max</th></tr>
-    <tr><td><b>/api/olaylar_tum</b></td><td>2118</td><td>24</td><td>6187</td><td style="color:#c62828">9801</td><td style="color:#c62828">9999</td><td>10006</td></tr><tr><td><b>/api/auth/login</b></td><td>1784</td><td>48</td><td>6187</td><td style="color:#c62828">9607</td><td style="color:#c62828">9999</td><td>10003</td></tr><tr><td><b>/api/submit_olay</b></td><td>1460</td><td>1</td><td>2725</td><td style="color:#c62828">8025</td><td style="color:#c62828">9607</td><td>10002</td></tr><tr><td><b>/api/olaylar</b></td><td>1204</td><td>1</td><td>2894</td><td style="color:#c62828">7117</td><td style="color:#c62828">8693</td><td>9802</td></tr><tr><td><b>/api/olay/1</b></td><td>972</td><td>1</td><td>1130</td><td style="color:#333">2466</td><td style="color:#333">2516</td><td>2537</td></tr><tr><td><b>/api/olay/{{ createdOlayId }}</b></td><td>894</td><td>2</td><td>3678</td><td style="color:#c62828">7866</td><td style="color:#c62828">9607</td><td>9928</td></tr><tr><td><b>/api/admin/users</b></td><td>486</td><td>2</td><td>1755</td><td style="color:#333">2780</td><td style="color:#333">3396</td><td>3409</td></tr><tr><td><b>/api/olay/{{ newOlayId }}</b></td><td>395</td><td>4</td><td>3606</td><td style="color:#c62828">6976</td><td style="color:#c62828">8693</td><td>9622</td></tr>
+    <tr><td><b>/api/olaylar_tum</b></td><td>2254</td><td>22</td><td>5827</td><td style="color:#c62828">9417</td><td style="color:#c62828">9801</td><td>10004</td></tr><tr><td><b>/api/auth/login</b></td><td>2044</td><td>47</td><td>5827</td><td style="color:#c62828">9607</td><td style="color:#c62828">9801</td><td>10000</td></tr><tr><td><b>/api/submit_olay</b></td><td>1583</td><td>0</td><td>2231</td><td style="color:#c62828">6976</td><td style="color:#c62828">8025</td><td>9200</td></tr><tr><td><b>/api/olaylar</b></td><td>1286</td><td>1</td><td>2894</td><td style="color:#c62828">6703</td><td style="color:#c62828">9048</td><td>9772</td></tr><tr><td><b>/api/olay/1</b></td><td>1022</td><td>1</td><td>1108</td><td style="color:#333">2516</td><td style="color:#333">3396</td><td>4459</td></tr><tr><td><b>/api/olay/{{ createdOlayId }}</b></td><td>937</td><td>2</td><td>3012</td><td style="color:#c62828">8187</td><td style="color:#c62828">9417</td><td>9598</td></tr><tr><td><b>/api/admin/users</b></td><td>511</td><td>2</td><td>1940</td><td style="color:#c62828">4771</td><td style="color:#333">4771</td><td>4762</td></tr><tr><td><b>/api/olay/{{ newOlayId }}</b></td><td>424</td><td>2</td><td>2566</td><td style="color:#c62828">7117</td><td style="color:#c62828">7866</td><td>9487</td></tr>
   </table>
 </div>
 
@@ -91,15 +91,15 @@ td{padding:8px 12px;border-bottom:1px solid #f0f0f0}tr:hover{background:#fafafa}
   <h2>Scenario Distribution</h2>
   <table>
     <tr><th>Scenario</th><th>VU Count</th><th>Ratio</th></tr>
-    <tr><td>Uzman - Giris + Tam CRUD</td><td>4.401</td><td>54.9%</td></tr><tr><td>Unauthenticated - CRUD Denemesi (Guvenlik)</td><td>1.823</td><td>22.7%</td></tr><tr><td>Authenticated - Giris + CRUD</td><td>1.796</td><td>22.4%</td></tr>
+    <tr><td>Uzman - Giris + Tam CRUD</td><td>4.500</td><td>56.1%</td></tr><tr><td>Authenticated - Giris + CRUD</td><td>1.763</td><td>22.0%</td></tr><tr><td>Unauthenticated - CRUD Denemesi (Guvenlik)</td><td>1.757</td><td>21.9%</td></tr>
   </table>
 </div>
 
 </div>
-<div class="footer">DiDe Artillery Load Test Report | 2026-04-11 08:22:04</div>
+<div class="footer">DiDe Artillery Load Test Report | 2026-04-11 08:33:08</div>
 
 <script>
-const tl=[{"period":1,"rps":86,"ok":74,"err4":10,"err5":0,"timeout":0,"p50":50.9,"p95":92.8,"p99":147},{"period":2,"rps":1154,"ok":703,"err4":193,"err5":31,"timeout":0,"p50":214.9,"p95":1587.9,"p99":2836.2},{"period":3,"rps":1620,"ok":650,"err4":303,"err5":199,"timeout":0,"p50":2231,"p95":4965.3,"p99":6976.1},{"period":4,"rps":1925,"ok":636,"err4":326,"err5":156,"timeout":70,"p50":3984.7,"p95":9230.4,"p99":9801.2},{"period":5,"rps":1768,"ok":620,"err4":230,"err5":152,"timeout":94,"p50":5826.9,"p95":9801.2,"p99":9999.2},{"period":6,"rps":1642,"ok":424,"err4":143,"err5":131,"timeout":329,"p50":6187.2,"p95":9047.6,"p99":9801.2},{"period":7,"rps":1759,"ok":638,"err4":94,"err5":216,"timeout":64,"p50":5598.4,"p95":9416.8,"p99":9999.2},{"period":8,"rps":1574,"ok":345,"err4":252,"err5":94,"timeout":275,"p50":6064.7,"p95":9607.1,"p99":9801.2},{"period":9,"rps":1577,"ok":612,"err4":128,"err5":123,"timeout":255,"p50":4770.6,"p95":9047.6,"p99":9801.2},{"period":10,"rps":1847,"ok":591,"err4":316,"err5":78,"timeout":38,"p50":4867,"p95":8692.8,"p99":9607.1},{"period":11,"rps":523,"ok":97,"err4":362,"err5":34,"timeout":754,"p50":2515.5,"p95":9607.1,"p99":9999.2},{"period":12,"rps":248,"ok":215,"err4":118,"err5":17,"timeout":92,"p50":1620,"p95":7709.8,"p99":9801.2},{"period":13,"rps":2,"ok":2,"err4":0,"err5":0,"timeout":0,"p50":37.7,"p95":37.7,"p99":37.7}];
+const tl=[{"period":1,"rps":359,"ok":285,"err4":69,"err5":0,"timeout":0,"p50":40,"p95":111.1,"p99":144},{"period":2,"rps":1362,"ok":738,"err4":216,"err5":78,"timeout":0,"p50":804.5,"p95":3262.4,"p99":5272.4},{"period":3,"rps":1692,"ok":637,"err4":236,"err5":147,"timeout":3,"p50":3464.1,"p95":6976.1,"p99":7865.6},{"period":4,"rps":1768,"ok":501,"err4":210,"err5":161,"timeout":183,"p50":5168,"p95":9230.4,"p99":9801.2},{"period":5,"rps":1755,"ok":620,"err4":127,"err5":216,"timeout":130,"p50":4676.2,"p95":9230.4,"p99":9801.2},{"period":6,"rps":1677,"ok":447,"err4":245,"err5":102,"timeout":167,"p50":5378.9,"p95":9416.8,"p99":9801.2},{"period":7,"rps":1530,"ok":560,"err4":124,"err5":155,"timeout":231,"p50":4676.2,"p95":9416.8,"p99":9607.1},{"period":8,"rps":1827,"ok":506,"err4":264,"err5":94,"timeout":23,"p50":4316.6,"p95":8692.8,"p99":9607.1},{"period":9,"rps":1657,"ok":636,"err4":265,"err5":157,"timeout":258,"p50":3605.5,"p95":9416.8,"p99":9801.2},{"period":10,"rps":1763,"ok":902,"err4":288,"err5":4,"timeout":0,"p50":4231.1,"p95":7260.8,"p99":7865.6},{"period":11,"rps":808,"ok":309,"err4":454,"err5":29,"timeout":534,"p50":3828.5,"p95":9230.4,"p99":9607.1},{"period":12,"rps":121,"ok":31,"err4":61,"err5":13,"timeout":369,"p50":5272.4,"p95":9999.2,"p99":9999.2},{"period":13,"rps":111,"ok":143,"err4":31,"err5":0,"timeout":1,"p50":186.8,"p95":4676.2,"p99":7709.8}];
 new Chart(document.getElementById("timelineChart"),{
   type:"line",
   data:{labels:tl.map(t=>"P"+t.period),datasets:[
