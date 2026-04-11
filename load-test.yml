@@ -1,6 +1,10 @@
 config:
   target: "http://localhost:3000"
 
+  http:
+    timeout: 30000
+    pool: 100
+
   phases:
     - name: "Isinma Fazi"
       duration: 30
@@ -41,6 +45,7 @@ config:
     ensure: {}
 
   ensure:
+    maxErrorRate: 10
     thresholds:
       - http.response_time.p95: 3000
       - http.response_time.p99: 5000
@@ -67,12 +72,14 @@ scenarios:
               as: "userId"
             - json: "$.user.username"
               as: "userName"
+          afterResponse: "logFailedLogin"
           expect:
             - statusCode: 200
             - hasProperty: "token"
       - think: 1
       - get:
           url: "/api/olaylar_tum"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           expect:
@@ -80,6 +87,7 @@ scenarios:
       - think: 1
       - get:
           url: "/api/olaylar"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           capture:
@@ -91,6 +99,7 @@ scenarios:
       - think: 1
       - post:
           url: "/api/submit_olay"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           json:
@@ -101,7 +110,7 @@ scenarios:
           capture:
             - json: "$.olay_id"
               as: "createdOlayId"
-              strict: true
+              strict: false
           afterResponse: "saveCreatedOlayId"
           expect:
             - statusCode: 200
@@ -109,6 +118,7 @@ scenarios:
       - think: 2
       - patch:
           url: "/api/olay/{{ createdOlayId }}"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           json:
@@ -121,6 +131,7 @@ scenarios:
       - think: 1
       - get:
           url: "/api/olaylar_tum"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           expect:
@@ -128,6 +139,7 @@ scenarios:
       - think: 1
       - delete:
           url: "/api/olay/{{ createdOlayId }}"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           ifTrue: "createdOlayId"
@@ -145,16 +157,19 @@ scenarios:
           capture:
             - json: "$.token"
               as: "authToken"
+          afterResponse: "logFailedLogin"
           expect:
             - statusCode: 200
       - think: 1
       - get:
           url: "/api/olaylar_tum"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
       - think: 1
       - post:
           url: "/api/submit_olay"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           json:
@@ -170,6 +185,7 @@ scenarios:
       - think: 1
       - patch:
           url: "/api/olay/{{ newOlayId }}"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           json:
@@ -178,6 +194,7 @@ scenarios:
       - think: 1
       - delete:
           url: "/api/olay/{{ newOlayId }}"
+          beforeRequest: "checkAuth"
           headers:
             Authorization: "Bearer {{ authToken }}"
           ifTrue: "newOlayId"

@@ -186,8 +186,12 @@ function generateReport(){
 
   const rt = s["http.response_time"]||{};
   const totalReq=c["http.requests"]||0, totalResp=c["http.responses"]||0;
-  const totalFail=c["vusers.failed"]||0, totalCreated=c["vusers.created"]||0;
-  const successRate = totalCreated>0?(((totalCreated-totalFail)/totalCreated)*100).toFixed(1):"0";
+  const totalCompleted=c["vusers.completed"]||0, totalCreated=c["vusers.created"]||0;
+  // Artillery ensure plugin maxErrorRate formulunu kullaniyoruz:
+  // errorRate = ((vusers.created - vusers.completed) / vusers.created) * 100
+  // successRate = 100 - errorRate
+  const errorRate = totalCreated>0?(((totalCreated-totalCompleted)/totalCreated)*100):100;
+  const successRate = (100 - errorRate).toFixed(1);
 
   const codeColors={"200":"#4caf50","201":"#66bb6a","301":"#2196f3","400":"#ff9800","401":"#f57c00","403":"#e65100","404":"#ff5722","500":"#f44336","502":"#d32f2f","503":"#b71c1c"};
 

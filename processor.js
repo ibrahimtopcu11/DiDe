@@ -3,7 +3,7 @@
 const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
-// Varsayilan degerler
+// Default environment variables
 const defaults = {
   TARGET_URL:        "http://localhost:3000",
   TOTAL_VU_PER_SEC:  "10",
@@ -17,7 +17,6 @@ Object.entries(defaults).forEach(([key, value]) => {
   }
 });
 
-// Bilgi mesaji
 
 console.log(`  Hedef       : ${process.env.TARGET_URL}`);
 console.log(`  VU/saniye   : ${process.env.TOTAL_VU_PER_SEC}`);
@@ -46,4 +45,25 @@ function saveCreatedOlayId(requestParams, response, context, ee, next) {
   return next();
 }
 
-module.exports = { saveCreatedOlayId };
+module.exports = { saveCreatedOlayId, checkAuth, logFailedLogin };
+
+
+function checkAuth(requestParams, context, ee, next) {
+  if (!context.vars.authToken) {
+    return next(new Error("No auth token available, skipping request"));
+  }
+  return next();
+}
+
+
+function logFailedLogin(requestParams, response, context, ee, next) {
+  try {
+    if (response && response.statusCode !== 200) {
+      const body = typeof response.body === "string"
+        ? JSON.parse(response.body)
+        : response.body;
+      console.log(`[LOGIN FAILED] Status: ${response.statusCode} | Error: ${body?.error || "unknown"}`);
+    }
+  } catch (_) { /* ignore */ }
+  return next();
+}
