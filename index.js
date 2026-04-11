@@ -53,7 +53,9 @@ const BASE_DB_CFG = DATABASE_URL
   ? {
       connectionString: DATABASE_URL,
       application_name: 'DiDe',
-      max: parseInt(process.env.PGPOOL_MAX, 10),
+      max: parseInt(process.env.PGPOOL_MAX, 10) || 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
       ssl: needSSL ? { rejectUnauthorized: false } : undefined,
     }
   : {
@@ -63,7 +65,9 @@ const BASE_DB_CFG = DATABASE_URL
       password: process.env.PGPASSWORD,
       database: process.env.PGDATABASE,
       application_name: 'DiDe',
-      max: parseInt(process.env.PGPOOL_MAX, 10),
+      max: parseInt(process.env.PGPOOL_MAX, 10) || 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
       ssl: needSSL ? { rejectUnauthorized: false } : undefined,
     };
 
@@ -140,6 +144,13 @@ app.use(
 
 app.use(express.json({ limit: '30mb' }));
 app.use(cookieParser());
+
+// Keep-alive: TCP baglanti tekrar kullanimi — ECONNREFUSED azaltir
+app.use((_req, res, next) => {
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('Keep-Alive', 'timeout=30');
+  next();
+});
 
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -797,22 +808,48 @@ function isEmailAllowed(emailRaw) {
 }
 
 
+// Basit kullanici cache — requireAuth her istekte DB'ye gitmesini onler
+const _userCache = new Map();
+const USER_CACHE_TTL = 30000; // 30 saniye
+function getCachedUser(id) {
+  const entry = _userCache.get(id);
+  if (entry && Date.now() - entry.ts < USER_CACHE_TTL) return entry.user;
+  _userCache.delete(id);
+  return null;
+}
+function setCachedUser(id, user) {
+  _userCache.set(id, { user, ts: Date.now() });
+  // Cache buyumesini onle
+  if (_userCache.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of _userCache) {
+      if (now - v.ts > USER_CACHE_TTL) _userCache.delete(k);
+    }
+  }
+}
+
 async function requireAuth(req, res, next) {
   try {
     const t = getTokenFrom(req);
     if (!t) return res.status(401).json({ error: 'unauthenticated', message: getErrorMessage(req, 'unauthenticated') });
     const payload = jwt.verify(t, JWT_SECRET);
 
-    const { rows } = await pool.query(
-      `SELECT id, username, role, email, COALESCE(is_active,true) AS is_active
-       FROM users WHERE id=$1`,
-      [payload.sub]
-    );
-    if (!rows.length) {
-      res.clearCookie('token', cookieOpts(0, req));
-      return res.status(401).json({ error: 'unauthenticated', message: getErrorMessage(req, 'unauthenticated') });
+    // Onbellekten kontrol et
+    let u = getCachedUser(payload.sub);
+    if (!u) {
+      const { rows } = await pool.query(
+        `SELECT id, username, role, email, COALESCE(is_active,true) AS is_active
+         FROM users WHERE id=$1`,
+        [payload.sub]
+      );
+      if (!rows.length) {
+        res.clearCookie('token', cookieOpts(0, req));
+        return res.status(401).json({ error: 'unauthenticated', message: getErrorMessage(req, 'unauthenticated') });
+      }
+      u = rows[0];
+      if (u.is_active) setCachedUser(payload.sub, u);
     }
-    const u = rows[0];
+
     if (!u.is_active) {
       res.clearCookie('token', cookieOpts(0, req));
       return res.status(403).json({ error: 'user_inactive', message: getErrorMessage(req, 'user_inactive') });
@@ -3072,6 +3109,9 @@ async function ensureOlaylarSchema(){
 
 ensureOlaylarSchema().then(() => {
   const server = app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));
+  // Yuk altinda baglanti kopmasini onle
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
 });
 startQFieldIngestLoop();
 const shutdown = async () => {
