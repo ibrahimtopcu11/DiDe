@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS public.olay (
   deactivated_at           timestamptz,
   created_at               timestamptz DEFAULT now(),
   photo_urls               text NOT NULL DEFAULT '[]',
-  video_urls               text NOT NULL DEFAULT '[]'
+  video_urls               text NOT NULL DEFAULT '[]',
+  polygon_pk_values        text DEFAULT '{}'
 );
 
 
