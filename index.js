@@ -1,7 +1,25 @@
 // index.js 
+
 // KRITIK: bcrypt libuv thread pool kullanir. Varsayilan 4 thread, yuk altinda yetersiz kalir.
-// Bu satir TUM require'lardan ONCE olmali, cunku libuv pool ilk kullanimda olusturulur.
 process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '64';
+
+// ── CLUSTER MODE: Tum CPU cekirdeklerini kullan ─────────────────────────
+const cluster = require('cluster');
+const os = require('os');
+
+if (cluster.isPrimary) {
+  const numWorkers = parseInt(process.env.CLUSTER_WORKERS, 10) || os.cpus().length;
+  console.log(`[CLUSTER] Primary ${process.pid} — ${numWorkers} worker baslatiliyor...`);
+  for (let i = 0; i < numWorkers; i++) {
+    cluster.fork({ WORKER_ID: String(i) });
+  }
+  cluster.on('exit', (worker, code) => {
+    console.log(`[CLUSTER] Worker ${worker.process.pid} durdu (code=${code}), yenisi baslatiliyor...`);
+    cluster.fork();
+  });
+  // Primary process burada biter — Express kodu worker'larda calisir
+} else {
+// ── WORKER PROCESS BASLANGICI ───────────────────────────────────────────
 
 require('dotenv').config();
 
@@ -2080,7 +2098,7 @@ app.get('/api/olaylar', requireAuth, async (req, res) => {
   }
 });
 
-// olaylar_tum icin kisa sureli sorgu onbellegi — DB baski azaltir
+// olaylar_tum icin kisa sureli sorgu onbellegi — DB baskisini azaltir
 let _olaylarTumCache = { data: null, ts: 0 };
 const OLAYLAR_TUM_CACHE_TTL = 3000; // 3 saniye
 
@@ -2109,18 +2127,12 @@ app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
       const r = await pool.query(
         `
         SELECT
-          o.olay_id,
-          o.enlem,
-          o.boylam,
+          o.olay_id, o.enlem, o.boylam,
           o.olay_turu AS olay_turu_id,
-          l.o_adi     AS olay_turu_adi,
-          l.good      AS olay_turu_good,
-          o.aciklama,
-          o.created_by_id              AS created_by_id,
-          o.created_by_name            AS created_by_username,
-          o.created_at,
-          o.photo_urls,
-          o.video_urls
+          l.o_adi AS olay_turu_adi, l.good AS olay_turu_good,
+          o.aciklama, o.created_by_id AS created_by_id,
+          o.created_by_name AS created_by_username,
+          o.created_at, o.photo_urls, o.video_urls
         FROM olay o
         LEFT JOIN olaylar l ON l.o_id = o.olay_turu
         WHERE COALESCE(o.active, true) = true
@@ -2135,7 +2147,6 @@ app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
       _olaylarTumCache = { data: baseRows, ts: now };
     }
 
-    // is_mine hesapla (kullaniciya ozel, cache disinda)
     let rows = baseRows.map((row) => ({
       ...row,
       is_mine: (row.created_by_id === myId) || (row.created_by_username === myUser),
@@ -2270,7 +2281,7 @@ app.post('/api/submit_olay', requireAuth, async (req, res) => {
     const pId = p_id === '' || p_id == null ? null : parseInt(p_id, 10);
     if (Number.isInteger(pId)) await pool.query('INSERT INTO kayit (p_id, olay_id) VALUES ($1,$2)', [pId, olay_id]);
 
-    _olaylarTumCache.data = null; // Cache temizle
+    _olaylarTumCache.data = null;
     res.json({ success: true, olay_id, photo_urls: photoUrls, video_urls: videoUrls });
   } catch (e) {
     console.error('submit_olay error:', e);
@@ -2339,7 +2350,7 @@ app.patch('/api/olay/:id', requireAuth, async (req, res) => {
     const r = await pool.query(q, vals);
     if (!r.rowCount) return res.status(404).json({ error: 'bulunamadi', message: getErrorMessage(req, 'bulunamadi') });
 
-    _olaylarTumCache.data = null; // Cache temizle
+    _olaylarTumCache.data = null;
     res.json({
       ok: true,
       olay_id: r.rows[0].olay_id,
@@ -2380,7 +2391,7 @@ app.delete('/api/olay/:id', requireAuth, async (req, res) => {
     await client.query('COMMIT');
 
     if (!r.rowCount) return res.status(404).json({ error: 'bulunamadi', message: getErrorMessage(req, 'bulunamadi') });
-    _olaylarTumCache.data = null; // Cache temizle
+    _olaylarTumCache.data = null;
     res.set('X-UI-Remove', '1');
     res.json({ ok: true, olay_id: r.rows[0].olay_id, ui_remove: true });
   } catch (e) {
@@ -3126,17 +3137,26 @@ async function ensureOlaylarSchema(){
 }
 
 ensureOlaylarSchema().then(() => {
-  const server = app.listen(PORT, '0.0.0.0', 2048, () => console.log(`Server running at http://localhost:${PORT}`));
+  const server = app.listen(PORT, '0.0.0.0', 2048, () => {
+    console.log(`[CLUSTER] Worker ${process.pid} (id=${process.env.WORKER_ID}) dinliyor: http://localhost:${PORT}`);
+  });
   // Yuk altinda baglanti kopmasini onle
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;
 });
-startQFieldIngestLoop();
+
+// QField ve LISTEN/NOTIFY sadece worker 0'da calissin (tekrar onleme)
+if (process.env.WORKER_ID === '0') {
+  startQFieldIngestLoop();
+}
+
 const shutdown = async () => {
   try { if (listenClient) listenClient.release(); } catch {}
   try { await pool.end(); } catch {}
-  server.close(() => process.exit(0));
+  process.exit(0);
 };
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+} 
