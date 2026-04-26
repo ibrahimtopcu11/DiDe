@@ -34,7 +34,7 @@ install_base_packages() {
   log "The system is being updated and essential packages are being installed..."
   sudo apt update -y
   sudo apt upgrade -y
-  sudo apt install -y git curl build-essential ca-certificates gnupg lsb-release
+  sudo apt install -y git curl build-essential ca-certificates gnupg lsb-release gdal-bin
 }
 
 install_postgres_postgis() {
@@ -94,7 +94,9 @@ read_env_vars() {
   PGPORT="$(get_env_value PGPORT "$ENV_FILE")"
   PORT="$(get_env_value PORT "$ENV_FILE")"
 
-  
+  POLYGON_FILE="$(get_env_value POLYGON_FILE "$ENV_FILE")"
+  POLYGON_PK1="$(get_env_value POLYGON_PK1 "$ENV_FILE")"
+  POLYGON_PK2="$(get_env_value POLYGON_PK2 "$ENV_FILE")"
 
   PGDATABASE="${PGDATABASE}"
   PGPASSWORD="${PGPASSWORD}"
@@ -103,11 +105,14 @@ read_env_vars() {
   PGPORT="${PGPORT}"
   PORT="${PORT}"
 
-  echo "DB_NAME   = $PGDATABASE"
-  echo "DB_USER   = $PGUSER"
-  echo "DB_HOST   = $PGHOST"
-  echo "DB_PORT   = $PGPORT"
-  echo "APP_PORT  = $PORT"
+  echo "DB_NAME       = $PGDATABASE"
+  echo "DB_USER       = $PGUSER"
+  echo "DB_HOST       = $PGHOST"
+  echo "DB_PORT       = $PGPORT"
+  echo "APP_PORT      = $PORT"
+  echo "POLYGON_FILE  = ${POLYGON_FILE:-<not set>}"
+  echo "POLYGON_PK1   = ${POLYGON_PK1:-<not set>}"
+  echo "POLYGON_PK2   = ${POLYGON_PK2:-<not set>}"
 }
 
 configure_postgres() {
@@ -142,6 +147,87 @@ run_sql_file() {
 
   sudo -u postgres psql -d "$PGDATABASE" -f "$PROJECT_DIR/$SQL_FILE"
   log "SQL import tamamlandı "
+}
+
+import_polygon_file() {
+  if [ -z "${POLYGON_FILE:-}" ]; then
+    log "POLYGON_FILE is not set in .env, skipping polygon import."
+    return 0
+  fi
+
+  local ABS_POLY_PATH="${PROJECT_DIR}/${POLYGON_FILE}"
+
+  if [ ! -f "$ABS_POLY_PATH" ]; then
+    echo " Polygon file not found: $ABS_POLY_PATH"
+    echo " Make sure the file exists in the project directory."
+    echo " POLYGON_FILE value in .env: $POLYGON_FILE"
+    exit 1
+  fi
+
+  if [ -z "${POLYGON_PK1:-}" ]; then
+    echo " POLYGON_PK1 is not set in .env."
+    echo " You must define at least one primary key column."
+    exit 1
+  fi
+
+  # Derive table name from filename (lowercase, no extension)
+  local POLY_BASENAME
+  POLY_BASENAME="$(basename "$ABS_POLY_PATH")"
+  local POLY_TABLE
+  POLY_TABLE="$(echo "${POLY_BASENAME%.*}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9_]/_/g')"
+
+  log "Importing polygon file into PostGIS table: ${POLY_TABLE} ..."
+
+  # Check if table already exists
+  TABLE_EXISTS=$(sudo -u postgres psql -tAc \
+    "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='${POLY_TABLE}'" \
+    "$PGDATABASE" || true)
+
+  if [ "$TABLE_EXISTS" = "1" ]; then
+    log "Polygon table '${POLY_TABLE}' already exists, skipping import."
+  else
+    # Use ogr2ogr to import GeoJSON / Shapefile / GeoPackage into PostGIS
+    sudo -u postgres ogr2ogr \
+      -f "PostgreSQL" \
+      "PG:host=${PGHOST} port=${PGPORT} dbname=${PGDATABASE} user=postgres password=${PGPASSWORD}" \
+      "$ABS_POLY_PATH" \
+      -nln "$POLY_TABLE" \
+      -lco GEOMETRY_NAME=geom \
+      -lco FID=gid \
+      -lco PRECISION=NO \
+      -t_srs EPSG:4326 \
+      -nlt PROMOTE_TO_MULTI \
+      --config OGR_TRUNCATE NO \
+      2>&1 || {
+        echo " ogr2ogr import failed for: $ABS_POLY_PATH"
+        exit 1
+      }
+
+    log "Polygon file imported successfully into table: ${POLY_TABLE}"
+  fi
+
+  # Ensure PostGIS spatial index exists
+  sudo -u postgres psql -d "$PGDATABASE" -c \
+    "CREATE INDEX IF NOT EXISTS idx_${POLY_TABLE}_geom ON public.${POLY_TABLE} USING GIST (geom);" \
+    2>/dev/null || true
+
+  # Validate that PK columns exist in the imported table
+  for PK_COL in "$POLYGON_PK1" ${POLYGON_PK2:+"$POLYGON_PK2"}; do
+    COL_EXISTS=$(sudo -u postgres psql -tAc \
+      "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='${POLY_TABLE}' AND column_name='${PK_COL}'" \
+      "$PGDATABASE" || true)
+    if [ "$COL_EXISTS" != "1" ]; then
+      echo " WARNING: PK column '${PK_COL}' not found in table '${POLY_TABLE}'."
+      echo " Available columns:"
+      sudo -u postgres psql -tAc \
+        "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='${POLY_TABLE}' ORDER BY ordinal_position" \
+        "$PGDATABASE"
+      echo ""
+      echo " Please check POLYGON_PK1 / POLYGON_PK2 values in .env"
+    fi
+  done
+
+  log "Polygon table '${POLY_TABLE}' is ready (PK1=${POLYGON_PK1}${POLYGON_PK2:+, PK2=${POLYGON_PK2}})"
 }
 
 install_project_deps() {
@@ -222,6 +308,7 @@ main() {
   read_env_vars
   configure_postgres
   run_sql_file
+  import_polygon_file
   install_project_deps
   setup_pm2
   setup_nginx
