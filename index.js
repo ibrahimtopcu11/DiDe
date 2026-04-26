@@ -34,6 +34,13 @@ const SHOW_BAD_EVENTS_ON_LOGIN = String(process.env.SHOW_BAD_EVENTS_ON_LOGIN) ==
 const QFIELD_SYNC_ROOT = process.env.QFIELD_SYNC_ROOT || '';              
 const QFIELD_INGEST_INTERVAL_MS = parseInt(process.env.QFIELD_INGEST_INTERVAL_MS, 10);
 
+const POLYGON_FILE  = process.env.POLYGON_FILE || '';
+const POLYGON_PK1   = process.env.POLYGON_PK1 || '';
+const POLYGON_PK2   = process.env.POLYGON_PK2 || '';
+const POLYGON_TABLE = POLYGON_FILE
+  ? path.basename(POLYGON_FILE).replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_')
+  : '';
+
 
 
 const FRONTEND_ORIGIN = process.env.CORS_ORIGIN;
@@ -589,6 +596,160 @@ app.get('/api/raster-layers', (req, res) => {
     return res.json({ ok: true, layers });
   } catch (e) {
     return res.json({ ok: true, layers: [] });
+  }
+});
+
+/* ===================== Polygon Layer Endpoints ===================== */
+
+// GET /api/polygon-layer  –  Serve the env-configured polygon layer as GeoJSON
+app.get('/api/polygon-layer', async (req, res) => {
+  if (!POLYGON_TABLE) {
+    return res.json({ type: 'FeatureCollection', features: [] });
+  }
+  try {
+    const table = assertSafeIdent(POLYGON_TABLE, 'table');
+    const cols = [POLYGON_PK1];
+    if (POLYGON_PK2) cols.push(POLYGON_PK2);
+    cols.forEach(c => assertSafeIdent(c, 'column'));
+
+    const propCols = cols.map(c => `t.${c}`).join(', ');
+
+    const q = `
+      SELECT jsonb_build_object(
+        'type','FeatureCollection',
+        'features', COALESCE(jsonb_agg(jsonb_build_object(
+          'type','Feature',
+          'geometry', ST_AsGeoJSON(t.geom)::jsonb,
+          'properties', jsonb_build_object(
+            ${cols.map(c => `'${c}', t.${c}`).join(', ')}
+          )
+        )), '[]'::jsonb)
+      ) AS fc
+      FROM public.${table} t
+      WHERE t.geom IS NOT NULL;
+    `;
+    const { rows } = await pool.query(q);
+    return res.json(rows[0].fc);
+  } catch (e) {
+    console.error('[polygon-layer] error:', e.message);
+    return res.status(500).json({ error: 'sunucu_hatasi' });
+  }
+});
+
+// POST /api/polygon/find  –  Given lat/lng, find the containing polygon
+app.post('/api/polygon/find', async (req, res) => {
+  if (!POLYGON_TABLE) {
+    return res.json({ ok: true, found: false, message: 'no_polygon_configured' });
+  }
+  try {
+    const lat = parseFloat(req.body?.lat);
+    const lng = parseFloat(req.body?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return res.status(400).json({ error: 'gecersiz_koordinat' });
+    }
+
+    const table = assertSafeIdent(POLYGON_TABLE, 'table');
+    const cols = [POLYGON_PK1];
+    if (POLYGON_PK2) cols.push(POLYGON_PK2);
+    cols.forEach(c => assertSafeIdent(c, 'column'));
+
+    const selectCols = cols.map(c => `t.${c}`).join(', ');
+
+    const q = `
+      SELECT ${selectCols}, ST_AsGeoJSON(t.geom)::jsonb AS geojson
+      FROM public.${table} t
+      WHERE ST_Contains(t.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+      LIMIT 1;
+    `;
+    const { rows } = await pool.query(q, [lng, lat]);
+
+    if (!rows.length) {
+      return res.json({ ok: true, found: false });
+    }
+
+    const row = rows[0];
+    const pkValues = {};
+    for (const c of cols) pkValues[c] = row[c];
+
+    return res.json({
+      ok: true,
+      found: true,
+      pk_values: pkValues,
+      geometry: row.geojson
+    });
+  } catch (e) {
+    console.error('[polygon/find] error:', e.message);
+    return res.status(500).json({ error: 'sunucu_hatasi' });
+  }
+});
+
+// POST /api/polygon/records  –  Get existing event records within a polygon
+app.post('/api/polygon/records', async (req, res) => {
+  if (!POLYGON_TABLE) {
+    return res.json({ ok: true, records: [], count: 0 });
+  }
+  try {
+    const pkValues = req.body?.pk_values;
+    if (!pkValues || typeof pkValues !== 'object') {
+      return res.status(400).json({ error: 'gecersiz_istek' });
+    }
+
+    // Build WHERE clause from PK values in polygon_pk_values JSON column
+    // polygon_pk_values is stored as JSON text in the olay table
+    const conditions = [];
+    const vals = [];
+    let idx = 1;
+
+    if (POLYGON_PK1 && pkValues[POLYGON_PK1] != null) {
+      conditions.push(`o.polygon_pk_values::jsonb ->> '${assertSafeIdent(POLYGON_PK1, 'column')}' = $${idx++}`);
+      vals.push(String(pkValues[POLYGON_PK1]));
+    }
+    if (POLYGON_PK2 && pkValues[POLYGON_PK2] != null) {
+      conditions.push(`o.polygon_pk_values::jsonb ->> '${assertSafeIdent(POLYGON_PK2, 'column')}' = $${idx++}`);
+      vals.push(String(pkValues[POLYGON_PK2]));
+    }
+
+    if (!conditions.length) {
+      return res.json({ ok: true, records: [], count: 0 });
+    }
+
+    const q = `
+      SELECT
+        o.olay_id,
+        o.olay_turu,
+        l.o_adi AS olay_turu_adi,
+        o.aciklama,
+        o.photo_urls,
+        o.video_urls,
+        o.created_at,
+        o.created_by_name
+      FROM olay o
+      LEFT JOIN olaylar l ON l.o_id = o.olay_turu
+      WHERE COALESCE(o.active, true) = true
+        AND o.polygon_pk_values IS NOT NULL
+        AND o.polygon_pk_values <> ''
+        AND o.polygon_pk_values <> '{}'
+        AND ${conditions.join(' AND ')}
+      ORDER BY o.created_at DESC
+      LIMIT 50
+    `;
+    const { rows } = await pool.query(q, vals);
+
+    const records = rows.map(r => ({
+      olay_id: r.olay_id,
+      olay_turu: r.olay_turu,
+      olay_turu_adi: r.olay_turu_adi,
+      aciklama: r.aciklama,
+      photo_urls: parseJsonText(r.photo_urls),
+      video_urls: parseJsonText(r.video_urls),
+      created_at: r.created_at,
+      created_by_name: r.created_by_name
+    }));
+
+    return res.json({ ok: true, records, count: records.length });
+  } catch (e) {
+    console.error('[polygon/records] error:', e.message);
+    return res.status(500).json({ error: 'sunucu_hatasi' });
   }
 });
 /* ===================== HELPERS ===================== */
@@ -1178,6 +1339,7 @@ async function ensureDbSqlHelpers() {
   await run('olay add created_by_role_name',`ALTER TABLE public.olay ADD COLUMN IF NOT EXISTS created_by_role_name text`);
   await run('olay add created_by_id',       `ALTER TABLE public.olay ADD COLUMN IF NOT EXISTS created_by_id integer`);
   await run('olay add active',              `ALTER TABLE public.olay ADD COLUMN IF NOT EXISTS active boolean DEFAULT true`);
+  await run('olay add polygon_pk_values',   `ALTER TABLE public.olay ADD COLUMN IF NOT EXISTS polygon_pk_values text DEFAULT '{}'`);
   await run('olay add deactivated_by_name', `ALTER TABLE public.olay ADD COLUMN IF NOT EXISTS deactivated_by_name text`);
   await run('olay add deactivated_by_role', `ALTER TABLE public.olay ADD COLUMN IF NOT EXISTS deactivated_by_role_name text`);
   await run('olay add deactivated_by_id',   `ALTER TABLE public.olay ADD COLUMN IF NOT EXISTS deactivated_by_id integer`);
@@ -1677,6 +1839,9 @@ app.get('/api/config', (_req, res) => {
     mapMinZoom: parseInt(process.env.MAP_MIN_ZOOM, 10),
     showGoodEventsOnLogin: SHOW_GOOD_EVENTS_ON_LOGIN,
     showBadEventsOnLogin: SHOW_BAD_EVENTS_ON_LOGIN,
+    polygonTable: POLYGON_TABLE || null,
+    polygonPk1: POLYGON_PK1 || null,
+    polygonPk2: POLYGON_PK2 || null,
   });
 });
 /* ===================== AUTH ===================== */
@@ -2241,15 +2406,20 @@ app.post('/api/submit_olay', requireAuth, async (req, res) => {
     const photoUrls = normalizeIncomingToUrlArray(photoIncoming, 'photo');
     const videoUrls = normalizeIncomingToUrlArray(videoIncoming, 'video');
 
+    // Polygon PK values (from VG1 polygon matching)
+    const polygonPkRaw = req.body?.polygon_pk_values;
+    const polygonPkValues = (polygonPkRaw && typeof polygonPkRaw === 'object')
+      ? JSON.stringify(polygonPkRaw) : '{}';
+
     const ins = await pool.query(
       `INSERT INTO olay (enlem, boylam, olay_turu, aciklama, geom,
                          created_by_name, created_by_role_name, created_by_id, active,
-                         photo_urls, video_urls)
+                         photo_urls, video_urls, polygon_pk_values)
        VALUES ($1,$2,$3,$4, ST_SetSRID(ST_MakePoint($2,$1),4326),
                $5, $6, $7, true,
-               $8::text, $9::text)
+               $8::text, $9::text, $10::text)
        RETURNING olay_id`,
-      [lat, lng, olayTuruId, aciklama ?? null, req.user.username, req.user.role, req.user.id, toJsonText(photoUrls), toJsonText(videoUrls)]
+      [lat, lng, olayTuruId, aciklama ?? null, req.user.username, req.user.role, req.user.id, toJsonText(photoUrls), toJsonText(videoUrls), polygonPkValues]
     );
     const olay_id = ins.rows[0].olay_id;
 
