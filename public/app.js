@@ -3,6 +3,14 @@ let currentUser = null;
 let editingEventId = null;
 const eventIndex = new Map();
 
+/* ==================== POLYGON STATE (VG0-VG3) ==================== */
+let __polygonLayer = null;           // Leaflet GeoJSON layer on main map
+let __polygonHighlight = null;       // Currently highlighted polygon
+let __currentPolygonPkValues = null; // PK values of matched polygon
+let __currentPolygonGeometry = null; // GeoJSON geometry of matched polygon
+let __pendingLocationLat = null;     // Lat waiting for polygon confirm
+let __pendingLocationLng = null;     // Lng waiting for polygon confirm
+
 // i18n fallback functions
 if (typeof window.t !== 'function') {
   window.t = (key, params) => {
@@ -64,7 +72,10 @@ let APP_CONFIG = {
   mapInitialZoom: null,
   mapMinZoom: null,
   showGoodEventsOnLogin: null,
-  showBadEventsOnLogin: null
+  showBadEventsOnLogin: null,
+  polygonTable: null,
+  polygonPk1: null,
+  polygonPk2: null
 };
 
 async function loadAppConfig() {
@@ -641,6 +652,325 @@ async function loadGeomLayersForEventsMap(){
   ensureLayerDrawer(eventsMap, 'events-layer-list');
   renderLayerList(eventsMap, __eventsGeomLayers, 'events-layer-list');
 }
+
+
+/* ===================== VG0: Load Polygon Layer ===================== */
+async function loadPolygonLayer() {
+  if (!map) return;
+  if (__polygonLayer) {
+    try { map.removeLayer(__polygonLayer); } catch {}
+    __polygonLayer = null;
+  }
+
+  const polyTable = APP_CONFIG.polygonTable;
+  if (!polyTable) return;
+
+  try {
+    const r = await fetch('/api/polygon-layer');
+    if (!r.ok) return;
+    const fc = await r.json();
+    if (!fc.features || fc.features.length === 0) return;
+
+    __polygonLayer = L.geoJSON(fc, {
+      style: () => ({
+        color: '#2563eb',
+        weight: 2,
+        opacity: 0.6,
+        fillColor: '#3b82f6',
+        fillOpacity: 0.08,
+        dashArray: '5,5'
+      }),
+      onEachFeature: (feature, layer) => {
+        const props = feature.properties || {};
+        const pk1 = APP_CONFIG.polygonPk1;
+        const pk2 = APP_CONFIG.polygonPk2;
+        let label = '';
+        if (pk1 && props[pk1] != null) label += props[pk1];
+        if (pk2 && props[pk2] != null) label += (label ? ' / ' : '') + props[pk2];
+        if (label) {
+          layer.bindTooltip(label, { sticky: true, opacity: 0.85 });
+        }
+      }
+    });
+    __polygonLayer.addTo(map);
+
+    // Register in geom layers for layer drawer
+    if (!__geomLayers.some(x => x.table === '__polygon_env')) {
+      __geomLayers.push({
+        table: '__polygon_env',
+        geomType: 'polygon',
+        layer: __polygonLayer,
+        visible: true,
+        z: -10
+      });
+    }
+
+    ensureLayerDrawer(map);
+    renderLayerList(map);
+  } catch (e) {
+    console.warn('[VG0] Polygon layer load error:', e);
+  }
+}
+
+/* ===================== VG1: Point-in-Polygon Check ===================== */
+async function checkPolygonContainment(lat, lng) {
+  const polyTable = APP_CONFIG.polygonTable;
+  if (!polyTable) {
+    // No polygon configured, go straight to form
+    return { found: false, skip: true };
+  }
+
+  try {
+    const r = await fetch('/api/polygon/find', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lat, lng })
+    });
+    if (!r.ok) return { found: false, skip: true };
+    return await r.json();
+  } catch (e) {
+    console.warn('[VG1] polygon/find error:', e);
+    return { found: false, skip: true };
+  }
+}
+
+function highlightPolygon(geojson) {
+  clearPolygonHighlight();
+  if (!geojson || !map) return;
+  try {
+    __polygonHighlight = L.geoJSON(geojson, {
+      style: () => ({
+        color: '#f59e0b',
+        weight: 3,
+        opacity: 0.9,
+        fillColor: '#fbbf24',
+        fillOpacity: 0.25
+      })
+    }).addTo(map);
+  } catch (e) {
+    console.warn('[VG1] highlight error:', e);
+  }
+}
+
+function clearPolygonHighlight() {
+  if (__polygonHighlight) {
+    try { map.removeLayer(__polygonHighlight); } catch {}
+    __polygonHighlight = null;
+  }
+}
+
+function showPolygonConfirmCard(pkValues) {
+  const card = qs('#polygon-confirm-card');
+  if (!card) return;
+
+  const info = qs('#polygon-confirm-info');
+  if (info) {
+    const pk1 = APP_CONFIG.polygonPk1;
+    const pk2 = APP_CONFIG.polygonPk2;
+    let text = '';
+    if (pk1 && pkValues[pk1] != null) text += pk1 + ': ' + pkValues[pk1];
+    if (pk2 && pkValues[pk2] != null) text += (text ? '  |  ' : '') + pk2 + ': ' + pkValues[pk2];
+    info.textContent = text;
+  }
+
+  hide(qs('#olay-card'));
+  hide(qs('#polygon-records-card'));
+  show(card);
+  pushOverlayState('polygon-confirm-card');
+}
+
+function polygonConfirmCancel() {
+  hide(qs('#polygon-confirm-card'));
+  clearPolygonHighlight();
+  __currentPolygonPkValues = null;
+  __currentPolygonGeometry = null;
+  __pendingLocationLat = null;
+  __pendingLocationLng = null;
+
+  const mapEl = document.getElementById('map');
+  if (mapEl) mapEl.classList.remove('blur-background');
+
+  restoreMapViewFromOverlay();
+}
+window.polygonConfirmCancel = polygonConfirmCancel;
+
+async function polygonConfirmYes() {
+  hide(qs('#polygon-confirm-card'));
+
+  // VG2: Check existing records in this polygon
+  try {
+    const r = await fetch('/api/polygon/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pk_values: __currentPolygonPkValues })
+    });
+    if (r.ok) {
+      const data = await r.json();
+      if (data.count > 0) {
+        showPolygonRecordsCard(data.records, data.count);
+        return;
+      }
+    }
+  } catch (e) {
+    console.warn('[VG2] polygon/records error:', e);
+  }
+
+  // No existing records, go straight to VG3 (form)
+  openEventFormAfterPolygon();
+}
+
+/* ===================== VG2: Existing Records Review ===================== */
+function showPolygonRecordsCard(records, count) {
+  const card = qs('#polygon-records-card');
+  if (!card) return;
+
+  const countEl = qs('#polygon-records-count');
+  if (countEl) countEl.textContent = t('existingRecordCount', { count: count });
+
+  const list = qs('#polygon-records-list');
+  if (list) {
+    list.innerHTML = '';
+    records.forEach(rec => {
+      const item = document.createElement('div');
+      item.className = 'polygon-record-item';
+
+      const dateStr = rec.created_at
+        ? new Date(rec.created_at).toLocaleDateString() + ' ' + new Date(rec.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+        : '-';
+
+      let mediaHtml = '';
+      const photos = Array.isArray(rec.photo_urls) ? rec.photo_urls : [];
+      const videos = Array.isArray(rec.video_urls) ? rec.video_urls : [];
+      if (photos.length || videos.length) {
+        mediaHtml = '<div class="record-media">';
+        photos.forEach(u => {
+          mediaHtml += `<img src="${u}" alt="photo" loading="lazy" onclick="window.open('${u}','_blank')"/>`;
+        });
+        videos.forEach(u => {
+          mediaHtml += `<video src="${u}" preload="metadata" onclick="window.open('${u}','_blank')"></video>`;
+        });
+        mediaHtml += '</div>';
+      }
+
+      item.innerHTML = `
+        <div class="record-header">
+          <span class="record-type">${rec.olay_turu_adi || '-'}</span>
+          <span class="record-date">${dateStr}</span>
+        </div>
+        ${rec.aciklama ? '<div class="record-desc">' + rec.aciklama + '</div>' : ''}
+        ${mediaHtml}
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  hide(qs('#polygon-confirm-card'));
+  show(card);
+  pushOverlayState('polygon-records-card');
+}
+
+function polygonRecordsClose() {
+  hide(qs('#polygon-records-card'));
+  clearPolygonHighlight();
+  __currentPolygonPkValues = null;
+  __currentPolygonGeometry = null;
+  __pendingLocationLat = null;
+  __pendingLocationLng = null;
+
+  const mapEl = document.getElementById('map');
+  if (mapEl) mapEl.classList.remove('blur-background');
+
+  restoreMapViewFromOverlay();
+}
+window.polygonRecordsClose = polygonRecordsClose;
+
+function polygonRecordsContinue() {
+  hide(qs('#polygon-records-card'));
+  openEventFormAfterPolygon();
+}
+
+/* ===================== VG3: Open Form with Polygon Data ===================== */
+function openEventFormAfterPolygon() {
+  clearPolygonHighlight();
+
+  const latEl = qs('#lat');
+  const lngEl = qs('#lng');
+  if (latEl && __pendingLocationLat != null) latEl.value = String(__pendingLocationLat);
+  if (lngEl && __pendingLocationLng != null) lngEl.value = String(__pendingLocationLng);
+
+  const olayCard = qs('#olay-card');
+  if (olayCard) {
+    show(olayCard);
+    ensureBackButton();
+    const mapEl = document.getElementById('map');
+    if (mapEl) mapEl.classList.add('blur-background');
+    pushOverlayState('olay-card');
+    ensureMapLegend(map);
+  }
+}
+
+/* ===================== Polygon Flow Entry Point ===================== */
+async function startPolygonFlow(lat, lng) {
+  __pendingLocationLat = lat;
+  __pendingLocationLng = lng;
+
+  const result = await checkPolygonContainment(lat, lng);
+
+  if (result.skip) {
+    // No polygon configured, go directly to form
+    __currentPolygonPkValues = null;
+    openEventFormDirectly(lat, lng);
+    return;
+  }
+
+  if (!result.found) {
+    // Outside all polygons
+    toast(t('outsideWorkArea'), 'error', 3000);
+    __currentPolygonPkValues = null;
+    return;
+  }
+
+  // Inside a polygon
+  __currentPolygonPkValues = result.pk_values;
+  __currentPolygonGeometry = result.geometry;
+
+  highlightPolygon(result.geometry);
+  showPolygonConfirmCard(result.pk_values);
+}
+
+function openEventFormDirectly(lat, lng) {
+  const latEl = qs('#lat');
+  const lngEl = qs('#lng');
+  if (latEl) latEl.value = String(lat);
+  if (lngEl) lngEl.value = String(lng);
+
+  if (currentUser && currentUser.role === 'user') {
+    const olayCard = qs('#olay-card');
+    if (olayCard) {
+      show(olayCard);
+      ensureBackButton();
+      const mapEl = document.getElementById('map');
+      if (mapEl) mapEl.classList.add('blur-background');
+      pushOverlayState('olay-card');
+      ensureMapLegend(map);
+    }
+  }
+}
+
+/* ===================== Polygon Button Wiring ===================== */
+(function wirePolygonButtons() {
+  document.addEventListener('click', (e) => {
+    if (e.target.id === 'btn-polygon-confirm-yes') {
+      polygonConfirmYes();
+    } else if (e.target.id === 'btn-polygon-confirm-no') {
+      polygonConfirmCancel();
+    } else if (e.target.id === 'btn-polygon-records-continue') {
+      polygonRecordsContinue();
+    } else if (e.target.id === 'btn-polygon-records-return') {
+      polygonRecordsClose();
+    }
+  });
+})();
 
 
 function registerRasterProjection(epsg){
@@ -4522,6 +4852,7 @@ async function submitOlay(){
     boylam   : lng ? parseFloat(lng.value) : NaN,
     photo_urls: Array.isArray(photoUrls) ? photoUrls : (photoUrls ? [photoUrls] : []),
     video_urls: Array.isArray(videoUrls) ? videoUrls : (videoUrls ? [videoUrls] : []),
+    polygon_pk_values: __currentPolygonPkValues || null,
   };
 
   if (!Number.isFinite(payload.enlem) || !Number.isFinite(payload.boylam)) 
@@ -4563,6 +4894,13 @@ async function submitOlay(){
 
     stopLiveLocation();
     resetEdit();
+    
+    // Reset polygon state after submit
+    __currentPolygonPkValues = null;
+    __currentPolygonGeometry = null;
+    __pendingLocationLat = null;
+    __pendingLocationLng = null;
+    clearPolygonHighlight();
     
     await loadExistingEvents({ publicMode: false });
     
@@ -4668,6 +5006,35 @@ function geoFindMeStart() {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
   );
 }
+
+/* GPS with polygon flow (header button) */
+function geoFindMeWithPolygonFlow() {
+  if (!("geolocation" in navigator)) return;
+  setLocateUI(true);
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+
+      if (clickMarker) { try { map.removeLayer(clickMarker); } catch {} ; clickMarker = null; }
+
+      const ll = L.latLng(latitude, longitude);
+      if (liveMarker) liveMarker.setLatLng(ll);
+      else liveMarker = L.marker(ll, { icon: BLACK_PIN() }).addTo(map).bindPopup(t('myLocation'));
+
+      map.setView(ll, Math.max(map.getZoom(), 17), { animate:true });
+
+      if (currentUser && currentUser.role === 'user' && APP_CONFIG.polygonTable) {
+        startPolygonFlow(latitude, longitude);
+      } else {
+        openEventFormDirectly(latitude, longitude);
+        startLiveLocation();
+      }
+    },
+    () => { setLocateUI(false); },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
+  );
+}
+window.geoFindMeWithPolygonFlow = geoFindMeWithPolygonFlow;
 
 function startLiveLocation(){
   if (!("geolocation" in navigator)) return;
@@ -5147,6 +5514,13 @@ function restoreMapViewFromOverlay(){
   hide(qs('#register-card'));
   hide(qs('#forgot-card'));
   hide(qs('#olay-card'));
+  hide(qs('#polygon-confirm-card'));
+  hide(qs('#polygon-records-card'));
+
+  // Clear polygon highlight when closing overlays
+  if (typeof clearPolygonHighlight === 'function') {
+    try { clearPolygonHighlight(); } catch {}
+  }
 
   if (typeof resetEdit === 'function') {
     try { 
@@ -5180,7 +5554,7 @@ function restoreMapViewFromOverlay(){
 }
 
 function anyOverlayVisible(){
-  const cards = ['#login-card', '#register-card', '#forgot-card', '#olay-card'];
+  const cards = ['#login-card', '#register-card', '#forgot-card', '#olay-card', '#polygon-confirm-card', '#polygon-records-card'];
   return cards.some(sel => {
     const el = qs(sel);
     return el && !el.classList.contains('hidden');
@@ -5594,6 +5968,12 @@ async function login(){
     }
 
     try {
+      await loadPolygonLayer();
+    } catch(e) {
+      console.warn('[LOGIN] Polygon layer load error:', e);
+    }
+
+    try {
       await loadRasterLayers(map, __geomLayers, 'layer-list');
     } catch(e) {
       console.warn('[LOGIN] Raster layers reload error:', e);
@@ -5703,6 +6083,12 @@ async function logout(){
     await loadGeomLayersForMap(true);
   } catch(e) {
     console.warn('[LOGOUT] Geom layers reload error:', e);
+  }
+
+  try {
+    await loadPolygonLayer();
+  } catch(e) {
+    console.warn('[LOGOUT] Polygon layer load error:', e);
   }
 
   try {
@@ -6083,10 +6469,6 @@ function attachMapClickForLoggedIn(){
     if (liveAccuracyCircle) { try { map.removeLayer(liveAccuracyCircle); } catch {} ; liveAccuracyCircle = null; }
     
     const { lat, lng } = e.latlng;
-    const latEl = qs('#lat'); 
-    const lngEl = qs('#lng');
-    if (latEl) latEl.value = String(lat);
-    if (lngEl) lngEl.value = String(lng);
     
     if (clickMarker) {
       clickMarker.setLatLng(e.latlng);
@@ -6097,18 +6479,11 @@ function attachMapClickForLoggedIn(){
     }
     
     if (currentUser && currentUser.role === 'user') {
-      const olayCard = qs('#olay-card');
-      if (olayCard) {
-        show(olayCard);
-        ensureBackButton();
-        
-        const mapEl = document.getElementById('map');
-        if (mapEl) {
-          mapEl.classList.add('blur-background');
-        }
-        pushOverlayState('olay-card');
-        
-        ensureMapLegend(map);
+      // VG1: Route through polygon flow
+      if (APP_CONFIG.polygonTable) {
+        startPolygonFlow(lat, lng);
+      } else {
+        openEventFormDirectly(lat, lng);
       }
     }
   });
@@ -6286,6 +6661,11 @@ window.addEventListener('popstate', (event) => {
       console.warn('[INIT] User geom layers error:', e);
     }
     try {
+      await loadPolygonLayer();
+    } catch(e) {
+      console.warn('[INIT] User polygon layer error:', e);
+    }
+    try {
       await loadRasterLayers(map, __geomLayers, 'layer-list');
     } catch(e) {
       console.warn('[INIT] User raster layers error:', e);
@@ -6303,6 +6683,12 @@ window.addEventListener('popstate', (event) => {
       await loadGeomLayersForMap(false);
     } catch(e) {
       console.warn('[INIT] loadGeomLayersForMap error:', e);
+    }
+
+    try {
+      await loadPolygonLayer();
+    } catch(e) {
+      console.warn('[INIT] Supervisor polygon layer error:', e);
     }
 
     wireVeriTipiUI();
