@@ -240,7 +240,20 @@ const translations = {
     enterDescriptionPlaceholder: 'Açıklama girin...',
     selectFromMapPlaceholder: 'Haritadan seçin',
     newEventTypeNamePlaceholder: 'Yeni olay türü adı',
-    typeNamePlaceholder: 'Tür adı'
+    typeNamePlaceholder: 'Tür adı',
+
+    outsideWorkArea: 'Çalışma bölgesinin dışındasınız',
+    confirmRegion: 'Bulunduğunuz bölge doğru mu?',
+    regionConfirmed: 'Bölge onaylandı',
+    reviewExistingRecords: 'Mevcut kayıtları incele',
+    existingRecordsTitle: 'Bu Bölgedeki Mevcut Kayıtlar',
+    existingRecordCount: '{{count}} mevcut kayıt bulundu',
+    noExistingRecords: 'Bu bölgede henüz kayıt yok',
+    continueToForm: 'Olay Bildirimine Devam Et',
+    returnToMap: 'Ana Ekrana Dön',
+    recordDate: 'Tarih',
+    recordType: 'Olay Türü',
+    polygonNotConfigured: 'Poligon katmanı yapılandırılmamış'
   },
   
   en: {
@@ -484,7 +497,20 @@ const translations = {
     enterDescriptionPlaceholder: 'Enter description...',
     selectFromMapPlaceholder: 'Select from map',
     newEventTypeNamePlaceholder: 'New event type name',
-    typeNamePlaceholder: 'Type name'
+    typeNamePlaceholder: 'Type name',
+
+    outsideWorkArea: 'You are outside the work area',
+    confirmRegion: 'Are you in the correct grid?',
+    regionConfirmed: 'Region confirmed',
+    reviewExistingRecords: 'Review existing records',
+    existingRecordsTitle: 'Existing Records in This Area',
+    existingRecordCount: '{{count}} existing record(s) found',
+    noExistingRecords: 'No records in this area yet',
+    continueToForm: 'Continue to Event Report',
+    returnToMap: 'Return to Map',
+    recordDate: 'Date',
+    recordType: 'Event Type',
+    polygonNotConfigured: 'Polygon layer not configured'
   }
 };
 
