@@ -2291,6 +2291,64 @@ th:has(#btn-add-type){
   color: var(--muted, #888);
   font-weight: 400;
 }
+/* Instagram-style floating counter (top-right, fade in/out) */
+.pr-float-counter {
+  position: absolute;
+  top: 56px;
+  right: 14px;
+  background: rgba(0,0,0,.65);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.pr-float-counter.visible {
+  opacity: 1;
+}
+/* Instagram-style bottom dots for record pages */
+.pr-records-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+.pr-records-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted, #ccc);
+  transition: background .2s, transform .2s;
+}
+.pr-records-dots span.active {
+  background: var(--primary, #3b82f6);
+  transform: scale(1.3);
+}
+/* Instagram-style media floating counter within record */
+.pr-media-float-counter {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(0,0,0,.65);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.pr-media-float-counter.visible {
+  opacity: 1;
+}
 #polygon-records-swiper {
   flex: 1;
   display: flex;
@@ -2314,6 +2372,7 @@ th:has(#btn-add-type){
 
 /* Media section: split 50/50 */
 .pr-media-section {
+  position: relative;
   display: flex;
   width: 100%;
   min-height: 45vh;
