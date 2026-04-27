@@ -2249,53 +2249,178 @@ th:has(#btn-add-type){
   color: var(--muted);
 }
 
-/* ===================== Polygon Review Records ===================== */
-.polygon-record-item {
-  border: 1px solid var(--border, #ddd);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  background: var(--card-bg, #fff);
+/* ===================== VG1: Polygon Confirm Card ===================== */
+.polygon-flow-card {
+  position: fixed !important;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1200;
+  margin: 0 !important;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 20px 16px !important;
+  box-shadow: 0 -4px 20px rgba(0,0,0,.15);
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box;
 }
-.polygon-record-item .record-header {
+.polygon-flow-content {
+  text-align: center;
+}
+
+/* ===================== VG2: Fullscreen Records Swiper ===================== */
+.polygon-records-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: var(--bg, #fff);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#polygon-records-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 12px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border, #e5e5e5);
+}
+#polygon-records-page-indicator {
+  color: var(--muted, #888);
+  font-weight: 400;
+}
+#polygon-records-swiper {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+#polygon-records-swiper::-webkit-scrollbar { display: none; }
+
+.polygon-record-page {
+  min-width: 100%;
+  max-width: 100%;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Media section: split 50/50 */
+.pr-media-section {
+  display: flex;
+  width: 100%;
+  min-height: 45vh;
+  max-height: 50vh;
+  overflow: hidden;
+}
+.pr-media-half {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  background: #000;
+}
+.pr-media-half.single {
+  flex: none;
+  width: 100%;
+}
+.pr-media-half img,
+.pr-media-half video {
+  min-width: 100%;
+  max-width: 100%;
+  height: 100%;
+  object-fit: cover;
+  scroll-snap-align: start;
+  flex-shrink: 0;
+}
+.pr-media-half video {
+  object-fit: contain;
+  background: #000;
+}
+
+/* Info section */
+.pr-info-section {
+  padding: 14px 16px;
+  flex: 1;
+}
+.pr-info-type {
+  font-size: 1.05rem;
+  font-weight: 700;
   margin-bottom: 4px;
 }
-.polygon-record-item .record-type {
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-.polygon-record-item .record-date {
-  font-size: 0.8rem;
+.pr-info-date {
+  font-size: 0.82rem;
   color: var(--muted, #888);
+  margin-bottom: 8px;
 }
-.polygon-record-item .record-desc {
-  font-size: 0.88rem;
-  margin: 4px 0;
+.pr-info-desc {
+  font-size: 0.92rem;
+  line-height: 1.5;
   color: var(--text, #333);
 }
-.polygon-record-item .record-media {
+.pr-no-media {
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 30vh;
+  background: var(--border, #eee);
+  color: var(--muted, #888);
+  font-size: 0.95rem;
 }
-.polygon-record-item .record-media img {
-  width: 60px;
-  height: 60px;
-  object-fit: cover;
-  border-radius: 6px;
+.pr-media-dots {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 0;
+  background: rgba(0,0,0,.03);
+}
+.pr-media-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted, #ccc);
+}
+.pr-media-dots span.active {
+  background: var(--primary, #3b82f6);
+}
+
+/* Action buttons */
+#polygon-records-actions {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  padding: 14px 0 20px;
+  border-top: 1px solid var(--border, #e5e5e5);
+}
+.polygon-action-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid;
+  font-size: 1.5rem;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .15s;
+  background: transparent;
 }
-.polygon-record-item .record-media video {
-  width: 80px;
-  height: 60px;
-  object-fit: cover;
-  border-radius: 6px;
+.polygon-action-btn:active { transform: scale(.9); }
+.polygon-action-tick {
+  color: #22c55e;
+  border-color: #22c55e;
 }
-#polygon-confirm-card,
-#polygon-records-card {
-  z-index: 1100;
+.polygon-action-cross {
+  color: #ef4444;
+  border-color: #ef4444;
 }

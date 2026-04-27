@@ -691,7 +691,7 @@ app.post('/api/polygon/find', async (req, res) => {
   }
 });
 
-// POST /api/polygon/records  –  Get existing event records within a polygon
+// POST /api/polygon/records  –  Get existing event records within a polygon (spatial query)
 app.post('/api/polygon/records', async (req, res) => {
   if (!POLYGON_TABLE) {
     return res.json({ ok: true, records: [], count: 0 });
@@ -702,25 +702,29 @@ app.post('/api/polygon/records', async (req, res) => {
       return res.status(400).json({ error: 'gecersiz_istek' });
     }
 
-    // Build WHERE clause from PK values in polygon_pk_values JSON column
-    // polygon_pk_values is stored as JSON text in the olay table
-    const conditions = [];
+    const table = assertSafeIdent(POLYGON_TABLE, 'table');
+    const pk1Col = assertSafeIdent(POLYGON_PK1, 'column');
+
+    // Build WHERE to identify the polygon row
+    const polyConditions = [];
     const vals = [];
     let idx = 1;
 
     if (POLYGON_PK1 && pkValues[POLYGON_PK1] != null) {
-      conditions.push(`o.polygon_pk_values::jsonb ->> '${assertSafeIdent(POLYGON_PK1, 'column')}' = $${idx++}`);
+      polyConditions.push(`p.${pk1Col} = $${idx++}`);
       vals.push(String(pkValues[POLYGON_PK1]));
     }
     if (POLYGON_PK2 && pkValues[POLYGON_PK2] != null) {
-      conditions.push(`o.polygon_pk_values::jsonb ->> '${assertSafeIdent(POLYGON_PK2, 'column')}' = $${idx++}`);
+      const pk2Col = assertSafeIdent(POLYGON_PK2, 'column');
+      polyConditions.push(`p.${pk2Col} = $${idx++}`);
       vals.push(String(pkValues[POLYGON_PK2]));
     }
 
-    if (!conditions.length) {
+    if (!polyConditions.length) {
       return res.json({ ok: true, records: [], count: 0 });
     }
 
+    // Spatial join: find all active events whose point falls inside the polygon
     const q = `
       SELECT
         o.olay_id,
@@ -733,11 +737,10 @@ app.post('/api/polygon/records', async (req, res) => {
         o.created_by_name
       FROM olay o
       LEFT JOIN olaylar l ON l.o_id = o.olay_turu
+      JOIN public.${table} p ON ST_Contains(p.geom, o.geom)
       WHERE COALESCE(o.active, true) = true
-        AND o.polygon_pk_values IS NOT NULL
-        AND o.polygon_pk_values <> ''
-        AND o.polygon_pk_values <> '{}'
-        AND ${conditions.join(' AND ')}
+        AND o.geom IS NOT NULL
+        AND ${polyConditions.join(' AND ')}
       ORDER BY o.created_at DESC
       LIMIT 50
     `;

@@ -829,53 +829,110 @@ async function polygonConfirmYes() {
 }
 
 /* ===================== VG2: Existing Records Review ===================== */
+let __recordsCurrentPage = 0;
+let __recordsTotal = 0;
+
 function showPolygonRecordsCard(records, count) {
   const card = qs('#polygon-records-card');
   if (!card) return;
 
+  __recordsTotal = records.length;
+  __recordsCurrentPage = 0;
+
   const countEl = qs('#polygon-records-count');
   if (countEl) countEl.textContent = t('existingRecordCount', { count: count });
 
-  const list = qs('#polygon-records-list');
-  if (list) {
-    list.innerHTML = '';
-    records.forEach(rec => {
-      const item = document.createElement('div');
-      item.className = 'polygon-record-item';
+  const swiper = qs('#polygon-records-swiper');
+  if (swiper) {
+    swiper.innerHTML = '';
+    records.forEach((rec, idx) => {
+      const page = document.createElement('div');
+      page.className = 'polygon-record-page';
+
+      const photos = Array.isArray(rec.photo_urls) ? rec.photo_urls : [];
+      const videos = Array.isArray(rec.video_urls) ? rec.video_urls : [];
+      const hasPhotos = photos.length > 0;
+      const hasVideos = videos.length > 0;
+
+      let mediaHtml = '';
+      if (hasPhotos || hasVideos) {
+        const bothExist = hasPhotos && hasVideos;
+
+        if (bothExist) {
+          // Split 50/50: photos left, videos right
+          let photoSlides = photos.map(u => `<img src="${u}" alt="photo" loading="lazy"/>`).join('');
+          let videoSlides = videos.map(u => `<video src="${u}" preload="metadata" controls playsinline></video>`).join('');
+          mediaHtml = `
+            <div class="pr-media-section">
+              <div class="pr-media-half">${photoSlides}</div>
+              <div class="pr-media-half">${videoSlides}</div>
+            </div>`;
+        } else if (hasPhotos) {
+          let photoSlides = photos.map(u => `<img src="${u}" alt="photo" loading="lazy"/>`).join('');
+          mediaHtml = `
+            <div class="pr-media-section">
+              <div class="pr-media-half single">${photoSlides}</div>
+            </div>`;
+        } else {
+          let videoSlides = videos.map(u => `<video src="${u}" preload="metadata" controls playsinline></video>`).join('');
+          mediaHtml = `
+            <div class="pr-media-section">
+              <div class="pr-media-half single">${videoSlides}</div>
+            </div>`;
+        }
+
+        // Dots indicator for multi-media
+        const totalMedia = Math.max(photos.length, videos.length);
+        if (totalMedia > 1) {
+          let dots = '';
+          for (let d = 0; d < totalMedia; d++) {
+            dots += `<span${d === 0 ? ' class="active"' : ''}></span>`;
+          }
+          mediaHtml += `<div class="pr-media-dots">${dots}</div>`;
+        }
+      } else {
+        mediaHtml = `<div class="pr-no-media">${t('noPhoto')}</div>`;
+      }
 
       const dateStr = rec.created_at
         ? new Date(rec.created_at).toLocaleDateString() + ' ' + new Date(rec.created_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
         : '-';
 
-      let mediaHtml = '';
-      const photos = Array.isArray(rec.photo_urls) ? rec.photo_urls : [];
-      const videos = Array.isArray(rec.video_urls) ? rec.video_urls : [];
-      if (photos.length || videos.length) {
-        mediaHtml = '<div class="record-media">';
-        photos.forEach(u => {
-          mediaHtml += `<img src="${u}" alt="photo" loading="lazy" onclick="window.open('${u}','_blank')"/>`;
-        });
-        videos.forEach(u => {
-          mediaHtml += `<video src="${u}" preload="metadata" onclick="window.open('${u}','_blank')"></video>`;
-        });
-        mediaHtml += '</div>';
-      }
-
-      item.innerHTML = `
-        <div class="record-header">
-          <span class="record-type">${rec.olay_turu_adi || '-'}</span>
-          <span class="record-date">${dateStr}</span>
-        </div>
-        ${rec.aciklama ? '<div class="record-desc">' + rec.aciklama + '</div>' : ''}
+      page.innerHTML = `
         ${mediaHtml}
+        <div class="pr-info-section">
+          <div class="pr-info-type">${rec.olay_turu_adi || '-'}</div>
+          <div class="pr-info-date">${dateStr}</div>
+          ${rec.aciklama ? '<div class="pr-info-desc">' + rec.aciklama + '</div>' : ''}
+        </div>
       `;
-      list.appendChild(item);
+      swiper.appendChild(page);
+    });
+
+    // Update page indicator on scroll
+    swiper.addEventListener('scroll', () => {
+      const pageW = swiper.offsetWidth;
+      if (pageW > 0) {
+        const newPage = Math.round(swiper.scrollLeft / pageW);
+        if (newPage !== __recordsCurrentPage) {
+          __recordsCurrentPage = newPage;
+          updateRecordsPageIndicator();
+        }
+      }
     });
   }
 
+  updateRecordsPageIndicator();
   hide(qs('#polygon-confirm-card'));
   show(card);
   pushOverlayState('polygon-records-card');
+}
+
+function updateRecordsPageIndicator() {
+  const el = qs('#polygon-records-page-indicator');
+  if (el && __recordsTotal > 0) {
+    el.textContent = (__recordsCurrentPage + 1) + ' / ' + __recordsTotal;
+  }
 }
 
 function polygonRecordsClose() {
@@ -5018,8 +5075,14 @@ function geoFindMeStart() {
   );
 }
 
-/* GPS with polygon flow (header button) */
+/* GPS with polygon flow (header button) — toggles tracking on second press */
 function geoFindMeWithPolygonFlow() {
+  // Toggle: if already tracking, stop and reset
+  if (liveWatchId !== null) {
+    stopLiveLocation();
+    return;
+  }
+
   if (!("geolocation" in navigator)) return;
   setLocateUI(true);
   navigator.geolocation.getCurrentPosition(

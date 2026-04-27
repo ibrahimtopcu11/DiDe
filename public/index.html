@@ -318,7 +318,7 @@
           <button id="lang-en">EN</button>
         </div>
         <button id="btn-use-location-header" class="icon-btn hidden" type="button" data-i18n-title="useMyLocation"
-          onclick="if(window.geoFindMeWithPolygonFlow){geoFindMeWithPolygonFlow();}else if(window.geoFindMeToggle){geoFindMeToggle();}">
+          onclick="if(window.geoFindMeWithPolygonFlow){geoFindMeWithPolygonFlow();}">
           <img src="/useposition.svg" alt="" onerror="this.style.display='none';" />
         </button>
         <button id="btn-theme-toggle" class="icon-btn" type="button" aria-label="Theme"></button>
@@ -483,31 +483,29 @@
       </section>
 
       <!-- VG1: POLYGON CONFIRM CARD -->
-      <section id="polygon-confirm-card" class="card hidden">
-        <div class="card-title-line">
-          <button class="back-btn" type="button" data-i18n-title="back" onclick="if(typeof polygonConfirmCancel==='function')polygonConfirmCancel();">
-            <img src="/back.svg" data-i18n-alt="back" />
-          </button>
-          <h3 style="margin:0;" data-i18n="confirmRegion">Are you in the correct grid?</h3>
-        </div>
-        <div id="polygon-confirm-info" class="muted" style="margin:8px 0;"></div>
-        <div class="inline" style="gap:10px; margin-top:12px;">
-          <button type="button" id="btn-polygon-confirm-yes" class="btn primary" data-i18n="yes">Yes</button>
-          <button type="button" id="btn-polygon-confirm-no" class="btn ghost" data-i18n="no">No</button>
+      <section id="polygon-confirm-card" class="card polygon-flow-card hidden">
+        <div class="polygon-flow-content">
+          <h3 style="margin:0 0 8px 0;" data-i18n="confirmRegion">Are you in the correct grid?</h3>
+          <div id="polygon-confirm-info" style="font-size:1.1rem;font-weight:600;margin:8px 0 16px;"></div>
+          <div class="inline" style="gap:12px;">
+            <button type="button" id="btn-polygon-confirm-yes" class="btn primary" style="min-width:80px;" data-i18n="yes">Yes</button>
+            <button type="button" id="btn-polygon-confirm-no" class="btn ghost" style="min-width:80px;" data-i18n="no">No</button>
+          </div>
         </div>
       </section>
 
-      <!-- VG2: EXISTING RECORDS REVIEW CARD -->
-      <section id="polygon-records-card" class="card hidden">
-        <div class="card-title-line" style="justify-content:space-between;">
-          <h3 style="margin:0;" data-i18n="existingRecordsTitle">Existing Records in This Area</h3>
-          <button class="back-btn" type="button" style="font-size:20px;line-height:1;padding:4px 8px;" onclick="if(typeof polygonRecordsClose==='function')polygonRecordsClose();">&times;</button>
+      <!-- VG2: EXISTING RECORDS REVIEW (fullscreen swipeable) -->
+      <section id="polygon-records-card" class="polygon-records-fullscreen hidden">
+        <div id="polygon-records-header">
+          <span id="polygon-records-count"></span>
+          <span id="polygon-records-page-indicator"></span>
         </div>
-        <div id="polygon-records-count" class="muted" style="margin:4px 0 8px;"></div>
-        <div id="polygon-records-list" style="max-height:350px;overflow-y:auto;"></div>
-        <div class="inline" style="gap:10px; margin-top:12px;">
-          <button type="button" id="btn-polygon-records-continue" class="btn primary" data-i18n="continueToForm">Continue to Event Report</button>
-          <button type="button" id="btn-polygon-records-return" class="btn ghost" data-i18n="returnToMap">Return to Map</button>
+        <div id="polygon-records-swiper">
+          <!-- pages injected by JS -->
+        </div>
+        <div id="polygon-records-actions">
+          <button type="button" id="btn-polygon-records-continue" class="polygon-action-btn polygon-action-tick" title="Devam">&#10003;</button>
+          <button type="button" id="btn-polygon-records-return" class="polygon-action-btn polygon-action-cross" title="Geri">&#10007;</button>
         </div>
       </section>
 
