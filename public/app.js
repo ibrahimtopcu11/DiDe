@@ -831,6 +831,7 @@ async function polygonConfirmYes() {
 /* ===================== VG2: Existing Records Review ===================== */
 let __recordsCurrentPage = 0;
 let __recordsTotal = 0;
+let __recordsCounterTimer = null;
 
 function showPolygonRecordsCard(records, count) {
   const card = qs('#polygon-records-card');
@@ -859,36 +860,38 @@ function showPolygonRecordsCard(records, count) {
         const bothExist = hasPhotos && hasVideos;
 
         if (bothExist) {
-          // Split 50/50: photos left, videos right
           let photoSlides = photos.map(u => `<img src="${u}" alt="photo" loading="lazy"/>`).join('');
           let videoSlides = videos.map(u => `<video src="${u}" preload="metadata" controls playsinline></video>`).join('');
           mediaHtml = `
-            <div class="pr-media-section">
-              <div class="pr-media-half">${photoSlides}</div>
-              <div class="pr-media-half">${videoSlides}</div>
+            <div class="pr-media-section" data-media-count="${Math.max(photos.length, videos.length)}">
+              <div class="pr-media-float-counter" data-media-counter></div>
+              <div class="pr-media-half" data-media-scroll>${photoSlides}</div>
+              <div class="pr-media-half" data-media-scroll>${videoSlides}</div>
             </div>`;
         } else if (hasPhotos) {
           let photoSlides = photos.map(u => `<img src="${u}" alt="photo" loading="lazy"/>`).join('');
           mediaHtml = `
-            <div class="pr-media-section">
-              <div class="pr-media-half single">${photoSlides}</div>
+            <div class="pr-media-section" data-media-count="${photos.length}">
+              <div class="pr-media-float-counter" data-media-counter></div>
+              <div class="pr-media-half single" data-media-scroll>${photoSlides}</div>
             </div>`;
         } else {
           let videoSlides = videos.map(u => `<video src="${u}" preload="metadata" controls playsinline></video>`).join('');
           mediaHtml = `
-            <div class="pr-media-section">
-              <div class="pr-media-half single">${videoSlides}</div>
+            <div class="pr-media-section" data-media-count="${videos.length}">
+              <div class="pr-media-float-counter" data-media-counter></div>
+              <div class="pr-media-half single" data-media-scroll>${videoSlides}</div>
             </div>`;
         }
 
-        // Dots indicator for multi-media
+        // Instagram-style dots for multi-media within record
         const totalMedia = Math.max(photos.length, videos.length);
         if (totalMedia > 1) {
           let dots = '';
           for (let d = 0; d < totalMedia; d++) {
             dots += `<span${d === 0 ? ' class="active"' : ''}></span>`;
           }
-          mediaHtml += `<div class="pr-media-dots">${dots}</div>`;
+          mediaHtml += `<div class="pr-media-dots" data-media-dots>${dots}</div>`;
         }
       } else {
         mediaHtml = `<div class="pr-no-media">${t('noPhoto')}</div>`;
@@ -909,11 +912,92 @@ function showPolygonRecordsCard(records, count) {
       swiper.appendChild(page);
     });
 
-    // Update page indicator on scroll
-    swiper.addEventListener('scroll', () => {
-      const pageW = swiper.offsetWidth;
+    // ---- Instagram-style media scroll listeners within each record ----
+    swiper.querySelectorAll('.pr-media-section').forEach(section => {
+      const mediaCount = parseInt(section.dataset.mediaCount || '0', 10);
+      if (mediaCount <= 1) return;
+
+      const scrollables = section.querySelectorAll('[data-media-scroll]');
+      const counter = section.querySelector('[data-media-counter]');
+      const dotsContainer = section.closest('.polygon-record-page')?.querySelector('[data-media-dots]');
+      let mediaTimer = null;
+
+      scrollables.forEach(half => {
+        half.addEventListener('scroll', () => {
+          const itemW = half.offsetWidth;
+          if (itemW <= 0) return;
+          const currentIdx = Math.round(half.scrollLeft / itemW);
+
+          // Sync other halves
+          scrollables.forEach(other => {
+            if (other !== half) {
+              other.scrollLeft = currentIdx * other.offsetWidth;
+            }
+          });
+
+          // Update media dots
+          if (dotsContainer) {
+            dotsContainer.querySelectorAll('span').forEach((dot, di) => {
+              dot.classList.toggle('active', di === currentIdx);
+            });
+          }
+
+          // Show floating media counter
+          if (counter) {
+            counter.textContent = (currentIdx + 1) + '/' + mediaCount;
+            counter.classList.add('visible');
+            clearTimeout(mediaTimer);
+            mediaTimer = setTimeout(() => counter.classList.remove('visible'), 1000);
+          }
+        });
+      });
+    });
+
+    // ---- Instagram-style record page scroll (main swiper) ----
+    // Remove old listener by cloning
+    const newSwiper = swiper.cloneNode(true);
+    swiper.parentNode.replaceChild(newSwiper, swiper);
+
+    // Re-attach media scroll listeners on cloned swiper
+    newSwiper.querySelectorAll('.pr-media-section').forEach(section => {
+      const mediaCount = parseInt(section.dataset.mediaCount || '0', 10);
+      if (mediaCount <= 1) return;
+
+      const scrollables = section.querySelectorAll('[data-media-scroll]');
+      const counter = section.querySelector('[data-media-counter]');
+      const dotsContainer = section.closest('.polygon-record-page')?.querySelector('[data-media-dots]');
+      let mediaTimer = null;
+
+      scrollables.forEach(half => {
+        half.addEventListener('scroll', () => {
+          const itemW = half.offsetWidth;
+          if (itemW <= 0) return;
+          const currentIdx = Math.round(half.scrollLeft / itemW);
+
+          scrollables.forEach(other => {
+            if (other !== half) other.scrollLeft = currentIdx * other.offsetWidth;
+          });
+
+          if (dotsContainer) {
+            dotsContainer.querySelectorAll('span').forEach((dot, di) => {
+              dot.classList.toggle('active', di === currentIdx);
+            });
+          }
+
+          if (counter) {
+            counter.textContent = (currentIdx + 1) + '/' + mediaCount;
+            counter.classList.add('visible');
+            clearTimeout(mediaTimer);
+            mediaTimer = setTimeout(() => counter.classList.remove('visible'), 1000);
+          }
+        });
+      });
+    });
+
+    newSwiper.addEventListener('scroll', () => {
+      const pageW = newSwiper.offsetWidth;
       if (pageW > 0) {
-        const newPage = Math.round(swiper.scrollLeft / pageW);
+        const newPage = Math.round(newSwiper.scrollLeft / pageW);
         if (newPage !== __recordsCurrentPage) {
           __recordsCurrentPage = newPage;
           updateRecordsPageIndicator();
@@ -922,17 +1006,47 @@ function showPolygonRecordsCard(records, count) {
     });
   }
 
+  // Generate bottom dots for record pages
+  buildRecordsDots();
   updateRecordsPageIndicator();
+  // Show initial counter briefly
+  showRecordsFloatCounter();
+
   hide(qs('#polygon-confirm-card'));
   show(card);
   pushOverlayState('polygon-records-card');
 }
 
-function updateRecordsPageIndicator() {
-  const el = qs('#polygon-records-page-indicator');
-  if (el && __recordsTotal > 0) {
-    el.textContent = (__recordsCurrentPage + 1) + ' / ' + __recordsTotal;
+function buildRecordsDots() {
+  const dotsEl = qs('#polygon-records-dots');
+  if (!dotsEl) return;
+  dotsEl.innerHTML = '';
+  for (let i = 0; i < __recordsTotal; i++) {
+    const dot = document.createElement('span');
+    if (i === __recordsCurrentPage) dot.classList.add('active');
+    dotsEl.appendChild(dot);
   }
+}
+
+function showRecordsFloatCounter() {
+  const el = qs('#polygon-records-float-counter');
+  if (!el || __recordsTotal <= 0) return;
+  el.textContent = (__recordsCurrentPage + 1) + '/' + __recordsTotal;
+  el.classList.add('visible');
+  clearTimeout(__recordsCounterTimer);
+  __recordsCounterTimer = setTimeout(() => el.classList.remove('visible'), 1000);
+}
+
+function updateRecordsPageIndicator() {
+  // Update bottom dots
+  const dotsEl = qs('#polygon-records-dots');
+  if (dotsEl) {
+    dotsEl.querySelectorAll('span').forEach((dot, i) => {
+      dot.classList.toggle('active', i === __recordsCurrentPage);
+    });
+  }
+  // Show floating counter
+  showRecordsFloatCounter();
 }
 
 function polygonRecordsClose() {
@@ -5097,14 +5211,21 @@ function geoFindMeWithPolygonFlow() {
 
       map.setView(ll, Math.max(map.getZoom(), 17), { animate:true });
 
-      if (currentUser && currentUser.role === 'user' && APP_CONFIG.polygonTable) {
-        console.log('[GPS] Starting polygon flow — polygonTable =', APP_CONFIG.polygonTable);
-        startPolygonFlow(latitude, longitude);
-      } else {
-        console.log('[GPS] No polygon — opening form directly. polygonTable =', APP_CONFIG.polygonTable);
-        openEventFormDirectly(latitude, longitude);
-        startLiveLocation();
-      }
+      // Kullanıcı konumunu haritada görsün, 500ms sonra akışa başla
+      setTimeout(() => {
+        if (currentUser && currentUser.role === 'user' && APP_CONFIG.polygonTable) {
+          console.log('[GPS] Starting polygon flow — polygonTable =', APP_CONFIG.polygonTable);
+          startPolygonFlow(latitude, longitude);
+        } else if (currentUser && currentUser.role === 'user') {
+          console.log('[GPS] No polygon — opening form. polygonTable =', APP_CONFIG.polygonTable);
+          openEventFormDirectly(latitude, longitude);
+          startLiveLocation();
+        } else {
+          console.log('[GPS] Non-user role — opening form directly. polygonTable =', APP_CONFIG.polygonTable);
+          openEventFormDirectly(latitude, longitude);
+          startLiveLocation();
+        }
+      }, 500);
     },
     () => { setLocateUI(false); },
     { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
@@ -6161,11 +6282,13 @@ async function logout(){
     console.warn('[LOGOUT] Geom layers reload error:', e);
   }
 
-  try {
-    await loadPolygonLayer();
-  } catch(e) {
-    console.warn('[LOGOUT] Polygon layer load error:', e);
+  // Polygon katmanını logout sonrası kaldır — giriş ekranında görünmemeli
+  if (__polygonLayer) {
+    try { map.removeLayer(__polygonLayer); } catch {}
+    __polygonLayer = null;
   }
+  // __geomLayers içinden de polygon referansını temizle
+  __geomLayers = __geomLayers.filter(x => x.table !== '__polygon_env');
 
   try {
     await loadRasterLayers(map, __geomLayers, 'layer-list');
