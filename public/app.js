@@ -399,39 +399,30 @@ function ensureLayerDrawer(mapInstance, listId){
 
   const drawer = document.createElement('div');
   drawer.className = 'layer-drawer';
-  drawer.style.cssText = `
-    position:absolute; left:10px; top:120px; z-index:1200;
-    display:flex; align-items:flex-start; gap:0;
-    font-family: Arial, sans-serif;
-  `;
+
+  // Prevent clicks/touches from reaching the map
+  L.DomEvent.disableClickPropagation(drawer);
+  L.DomEvent.disableScrollPropagation(drawer);
+  drawer.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+  drawer.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
+  drawer.addEventListener('pointerdown', (e) => e.stopPropagation());
+  drawer.addEventListener('dblclick', (e) => e.stopPropagation());
 
   // notch button
   const notch = document.createElement('button');
   notch.className = 'layer-notch';
   notch.textContent = '≡';
-  notch.style.cssText = `
-    width:40px; height:40px; border-radius:10px 0 0 10px;
-    border:1px solid #cbd5e1; background:#ffffff; cursor:pointer;
-    box-shadow: 0 8px 20px rgba(0,0,0,.08);
-  `;
 
   // panel
   const panel = document.createElement('div');
   panel.className = 'layer-panel hidden';
-  panel.style.cssText = `
-    min-width:260px; max-width:320px;
-    padding:10px; border:1px solid #cbd5e1; border-left:none;
-    border-radius:0 10px 10px 0;
-    background:#ffffff;
-    box-shadow: 0 8px 20px rgba(0,0,0,.08);
-  `;
 
   panel.innerHTML = `
-    <div style="display:flex; align-items:center; justify-content:space-between;">
+    <div class="layer-panel-header">
       <b>Katmanlar</b>
-      <span style="opacity:.6; font-size:12px;">(göster/gizle + sırala)</span>
+      <span class="layer-panel-subtitle">(göster/gizle + sırala)</span>
     </div>
-    <div id="${listId}" style="margin-top:8px; display:flex; flex-direction:column; gap:6px;"></div>
+    <div id="${listId}" class="layer-panel-list"></div>
   `;
 
   notch.onclick = () => panel.classList.toggle('hidden');
@@ -846,6 +837,10 @@ function showPolygonRecordsCard(records, count) {
   const swiper = qs('#polygon-records-swiper');
   if (swiper) {
     swiper.innerHTML = '';
+    // Create inner track for transform-based animation
+    const track = document.createElement('div');
+    track.className = 'pr-swiper-track';
+
     records.forEach((rec, idx) => {
       const page = document.createElement('div');
       page.className = 'polygon-record-page';
@@ -909,19 +904,15 @@ function showPolygonRecordsCard(records, count) {
           ${rec.aciklama ? '<div class="pr-info-desc">' + rec.aciklama + '</div>' : ''}
         </div>
       `;
-      swiper.appendChild(page);
+      track.appendChild(page);
     });
+    swiper.appendChild(track);
 
     // ---- Instagram-style touch/swipe handler for main record pages ----
-    // Remove old listeners by cloning
-    const newSwiper = swiper.cloneNode(true);
-    swiper.parentNode.replaceChild(newSwiper, swiper);
+    setupMediaScrollListeners(swiper);
 
-    // Re-attach media scroll listeners on cloned swiper
-    setupMediaScrollListeners(newSwiper);
-
-    // Instagram-style one-page-at-a-time swipe
-    setupInstagramSwiper(newSwiper, {
+    // Instagram-style one-page-at-a-time swipe via CSS transforms
+    setupInstagramSwiper(swiper, track, {
       getPageCount: () => __recordsTotal,
       getCurrentPage: () => __recordsCurrentPage,
       onPageChange: (newPage) => {
@@ -942,41 +933,67 @@ function showPolygonRecordsCard(records, count) {
   pushOverlayState('polygon-records-card');
 }
 
-/* Instagram-style swiper: one page per swipe, no momentum skipping */
-function setupInstagramSwiper(container, opts) {
-  let startX = 0, startY = 0, isDragging = false, startScroll = 0, hasMoved = false;
-  const SWIPE_THRESHOLD = 40;  // min px to count as a swipe
-  const VELOCITY_THRESHOLD = 0.3; // px/ms for fast flick
+/* Instagram-style swiper: GPU-accelerated CSS transform animation */
+function setupInstagramSwiper(container, track, opts) {
+  let startX = 0, startY = 0, isDragging = false, hasMoved = false;
+  let dragOffsetX = 0;
+  const SWIPE_THRESHOLD = 40;
+  const VELOCITY_THRESHOLD = 0.25;
   let startTime = 0;
+  let isHorizontalSwipe = null; // null = undecided, true/false = locked
 
-  function goToPage(page) {
+  function getPageWidth() { return container.offsetWidth || 1; }
+
+  function goToPage(page, animate) {
     const clamped = Math.max(0, Math.min(page, opts.getPageCount() - 1));
-    const targetX = clamped * container.offsetWidth;
-    container.style.overflowX = 'auto';
-    container.scrollTo({ left: targetX, behavior: 'smooth' });
-    // Re-hide overflow after animation
-    setTimeout(() => { container.style.overflowX = 'hidden'; }, 350);
+    if (animate !== false) {
+      track.style.transition = 'transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+    } else {
+      track.style.transition = 'none';
+    }
+    track.style.transform = 'translateX(' + (-clamped * 100) + '%)';
     if (clamped !== opts.getCurrentPage()) {
       opts.onPageChange(clamped);
     }
   }
 
+  function setDragTransform(extraPx) {
+    const basePx = -opts.getCurrentPage() * getPageWidth();
+    track.style.transition = 'none';
+    track.style.transform = 'translateX(' + (basePx + extraPx) + 'px)';
+  }
+
+  // Touch events
   container.addEventListener('touchstart', (e) => {
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     startTime = Date.now();
     isDragging = true;
     hasMoved = false;
-    startScroll = opts.getCurrentPage() * container.offsetWidth;
+    isHorizontalSwipe = null;
+    dragOffsetX = 0;
   }, { passive: true });
 
   container.addEventListener('touchmove', (e) => {
     if (!isDragging) return;
-    const dx = Math.abs(e.touches[0].clientX - startX);
-    const dy = Math.abs(e.touches[0].clientY - startY);
-    if (dx > dy && dx > 10) {
-      hasMoved = true;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+
+    // Lock direction on first significant movement
+    if (isHorizontalSwipe === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      isHorizontalSwipe = Math.abs(dx) > Math.abs(dy);
+    }
+
+    if (isHorizontalSwipe) {
       e.preventDefault();
+      hasMoved = true;
+      dragOffsetX = dx;
+      // Dampen at edges
+      const current = opts.getCurrentPage();
+      if ((current === 0 && dx > 0) || (current === opts.getPageCount() - 1 && dx < 0)) {
+        dragOffsetX = dx * 0.3;
+      }
+      setDragTransform(dragOffsetX);
     }
   }, { passive: false });
 
@@ -984,68 +1001,79 @@ function setupInstagramSwiper(container, opts) {
     if (!isDragging) return;
     isDragging = false;
     if (!hasMoved) return;
-    
-    const endX = e.changedTouches[0].clientX;
-    const dx = startX - endX;
+
     const elapsed = Date.now() - startTime;
-    const velocity = Math.abs(dx) / elapsed;
+    const velocity = Math.abs(dragOffsetX) / elapsed;
     const current = opts.getCurrentPage();
 
-    if (Math.abs(dx) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
-      if (dx > 0) goToPage(current + 1); // swipe left → next
-      else goToPage(current - 1);         // swipe right → prev
+    if (Math.abs(dragOffsetX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+      if (dragOffsetX < 0) goToPage(current + 1);
+      else goToPage(current - 1);
     } else {
       goToPage(current); // snap back
     }
+    dragOffsetX = 0;
   }, { passive: true });
 
-  // Desktop: mouse drag
+  // Mouse drag (desktop)
   container.addEventListener('mousedown', (e) => {
     startX = e.clientX;
     startTime = Date.now();
     isDragging = true;
     hasMoved = false;
+    dragOffsetX = 0;
     container.style.cursor = 'grabbing';
     e.preventDefault();
   });
-  document.addEventListener('mousemove', (e) => {
+
+  const onMouseMove = (e) => {
     if (!isDragging) return;
-    if (Math.abs(e.clientX - startX) > 10) hasMoved = true;
-  });
-  document.addEventListener('mouseup', (e) => {
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 5) {
+      hasMoved = true;
+      dragOffsetX = dx;
+      const current = opts.getCurrentPage();
+      if ((current === 0 && dx > 0) || (current === opts.getPageCount() - 1 && dx < 0)) {
+        dragOffsetX = dx * 0.3;
+      }
+      setDragTransform(dragOffsetX);
+    }
+  };
+  const onMouseUp = (e) => {
     if (!isDragging) return;
     isDragging = false;
     container.style.cursor = '';
     if (!hasMoved) return;
-    
-    const dx = startX - e.clientX;
+
     const elapsed = Date.now() - startTime;
-    const velocity = Math.abs(dx) / elapsed;
+    const velocity = Math.abs(dragOffsetX) / elapsed;
     const current = opts.getCurrentPage();
 
-    if (Math.abs(dx) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
-      if (dx > 0) goToPage(current + 1);
+    if (Math.abs(dragOffsetX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+      if (dragOffsetX < 0) goToPage(current + 1);
       else goToPage(current - 1);
     } else {
       goToPage(current);
     }
-  });
+    dragOffsetX = 0;
+  };
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
 
-  // Desktop: wheel
+  // Wheel (desktop)
   let wheelLocked = false;
   container.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (wheelLocked) return;
     const current = opts.getCurrentPage();
-    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      if (e.deltaX > 30) { goToPage(current + 1); wheelLocked = true; }
-      else if (e.deltaX < -30) { goToPage(current - 1); wheelLocked = true; }
-    } else {
-      if (e.deltaY > 30) { goToPage(current + 1); wheelLocked = true; }
-      else if (e.deltaY < -30) { goToPage(current - 1); wheelLocked = true; }
-    }
-    if (wheelLocked) setTimeout(() => { wheelLocked = false; }, 500);
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (delta > 20) { goToPage(current + 1); wheelLocked = true; }
+    else if (delta < -20) { goToPage(current - 1); wheelLocked = true; }
+    if (wheelLocked) setTimeout(() => { wheelLocked = false; }, 450);
   }, { passive: false });
+
+  // Initial position
+  goToPage(opts.getCurrentPage(), false);
 }
 
 /* Setup media scroll listeners inside record pages */
