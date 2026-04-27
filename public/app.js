@@ -98,6 +98,7 @@ async function loadAppConfig() {
       if (config.pageSizeUsers) config.pageSizeUsers = Number(config.pageSizeUsers);
       
       APP_CONFIG = { ...APP_CONFIG, ...config };
+      console.log('[CONFIG] polygonTable =', APP_CONFIG.polygonTable, '| polygonPk1 =', APP_CONFIG.polygonPk1);
       
       if (map) {
         const minZoom = Number(APP_CONFIG.mapMinZoom) || 2;
@@ -663,12 +664,20 @@ async function loadPolygonLayer() {
   }
 
   const polyTable = APP_CONFIG.polygonTable;
-  if (!polyTable) return;
+  console.log('[VG0] loadPolygonLayer called — polygonTable =', polyTable);
+  if (!polyTable) {
+    console.warn('[VG0] polygonTable is empty, skipping polygon layer load');
+    return;
+  }
 
   try {
     const r = await fetch('/api/polygon-layer');
-    if (!r.ok) return;
+    if (!r.ok) {
+      console.error('[VG0] /api/polygon-layer returned', r.status);
+      return;
+    }
     const fc = await r.json();
+    console.log('[VG0] Polygon GeoJSON features:', fc.features?.length || 0);
     if (!fc.features || fc.features.length === 0) return;
 
     __polygonLayer = L.geoJSON(fc, {
@@ -911,10 +920,12 @@ function openEventFormAfterPolygon() {
 
 /* ===================== Polygon Flow Entry Point ===================== */
 async function startPolygonFlow(lat, lng) {
+  console.log('[VG1] startPolygonFlow called — lat:', lat, 'lng:', lng);
   __pendingLocationLat = lat;
   __pendingLocationLng = lng;
 
   const result = await checkPolygonContainment(lat, lng);
+  console.log('[VG1] checkPolygonContainment result:', JSON.stringify(result));
 
   if (result.skip) {
     // No polygon configured, go directly to form
@@ -5024,8 +5035,10 @@ function geoFindMeWithPolygonFlow() {
       map.setView(ll, Math.max(map.getZoom(), 17), { animate:true });
 
       if (currentUser && currentUser.role === 'user' && APP_CONFIG.polygonTable) {
+        console.log('[GPS] Starting polygon flow — polygonTable =', APP_CONFIG.polygonTable);
         startPolygonFlow(latitude, longitude);
       } else {
+        console.log('[GPS] No polygon — opening form directly. polygonTable =', APP_CONFIG.polygonTable);
         openEventFormDirectly(latitude, longitude);
         startLiveLocation();
       }
@@ -6480,6 +6493,7 @@ function attachMapClickForLoggedIn(){
     
     if (currentUser && currentUser.role === 'user') {
       // VG1: Route through polygon flow
+      console.log('[MAP CLICK] polygonTable =', APP_CONFIG.polygonTable);
       if (APP_CONFIG.polygonTable) {
         startPolygonFlow(lat, lng);
       } else {

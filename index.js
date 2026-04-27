@@ -41,6 +41,13 @@ const POLYGON_TABLE = POLYGON_FILE
   ? path.basename(POLYGON_FILE).replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_]/g, '_')
   : '';
 
+console.log('[POLYGON CONFIG]', {
+  POLYGON_FILE,
+  POLYGON_PK1,
+  POLYGON_PK2: POLYGON_PK2 || '(not set)',
+  POLYGON_TABLE: POLYGON_TABLE || '(empty — polygon features disabled)'
+});
+
 
 
 const FRONTEND_ORIGIN = process.env.CORS_ORIGIN;
@@ -603,6 +610,7 @@ app.get('/api/raster-layers', (req, res) => {
 
 // GET /api/polygon-layer  –  Serve the env-configured polygon layer as GeoJSON
 app.get('/api/polygon-layer', async (req, res) => {
+  console.log('[polygon-layer] POLYGON_TABLE =', POLYGON_TABLE, '| POLYGON_PK1 =', POLYGON_PK1);
   if (!POLYGON_TABLE) {
     return res.json({ type: 'FeatureCollection', features: [] });
   }
