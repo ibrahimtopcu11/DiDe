@@ -912,96 +912,21 @@ function showPolygonRecordsCard(records, count) {
       swiper.appendChild(page);
     });
 
-    // ---- Instagram-style media scroll listeners within each record ----
-    swiper.querySelectorAll('.pr-media-section').forEach(section => {
-      const mediaCount = parseInt(section.dataset.mediaCount || '0', 10);
-      if (mediaCount <= 1) return;
-
-      const scrollables = section.querySelectorAll('[data-media-scroll]');
-      const counter = section.querySelector('[data-media-counter]');
-      const dotsContainer = section.closest('.polygon-record-page')?.querySelector('[data-media-dots]');
-      let mediaTimer = null;
-
-      scrollables.forEach(half => {
-        half.addEventListener('scroll', () => {
-          const itemW = half.offsetWidth;
-          if (itemW <= 0) return;
-          const currentIdx = Math.round(half.scrollLeft / itemW);
-
-          // Sync other halves
-          scrollables.forEach(other => {
-            if (other !== half) {
-              other.scrollLeft = currentIdx * other.offsetWidth;
-            }
-          });
-
-          // Update media dots
-          if (dotsContainer) {
-            dotsContainer.querySelectorAll('span').forEach((dot, di) => {
-              dot.classList.toggle('active', di === currentIdx);
-            });
-          }
-
-          // Show floating media counter
-          if (counter) {
-            counter.textContent = (currentIdx + 1) + '/' + mediaCount;
-            counter.classList.add('visible');
-            clearTimeout(mediaTimer);
-            mediaTimer = setTimeout(() => counter.classList.remove('visible'), 1000);
-          }
-        });
-      });
-    });
-
-    // ---- Instagram-style record page scroll (main swiper) ----
-    // Remove old listener by cloning
+    // ---- Instagram-style touch/swipe handler for main record pages ----
+    // Remove old listeners by cloning
     const newSwiper = swiper.cloneNode(true);
     swiper.parentNode.replaceChild(newSwiper, swiper);
 
     // Re-attach media scroll listeners on cloned swiper
-    newSwiper.querySelectorAll('.pr-media-section').forEach(section => {
-      const mediaCount = parseInt(section.dataset.mediaCount || '0', 10);
-      if (mediaCount <= 1) return;
+    setupMediaScrollListeners(newSwiper);
 
-      const scrollables = section.querySelectorAll('[data-media-scroll]');
-      const counter = section.querySelector('[data-media-counter]');
-      const dotsContainer = section.closest('.polygon-record-page')?.querySelector('[data-media-dots]');
-      let mediaTimer = null;
-
-      scrollables.forEach(half => {
-        half.addEventListener('scroll', () => {
-          const itemW = half.offsetWidth;
-          if (itemW <= 0) return;
-          const currentIdx = Math.round(half.scrollLeft / itemW);
-
-          scrollables.forEach(other => {
-            if (other !== half) other.scrollLeft = currentIdx * other.offsetWidth;
-          });
-
-          if (dotsContainer) {
-            dotsContainer.querySelectorAll('span').forEach((dot, di) => {
-              dot.classList.toggle('active', di === currentIdx);
-            });
-          }
-
-          if (counter) {
-            counter.textContent = (currentIdx + 1) + '/' + mediaCount;
-            counter.classList.add('visible');
-            clearTimeout(mediaTimer);
-            mediaTimer = setTimeout(() => counter.classList.remove('visible'), 1000);
-          }
-        });
-      });
-    });
-
-    newSwiper.addEventListener('scroll', () => {
-      const pageW = newSwiper.offsetWidth;
-      if (pageW > 0) {
-        const newPage = Math.round(newSwiper.scrollLeft / pageW);
-        if (newPage !== __recordsCurrentPage) {
-          __recordsCurrentPage = newPage;
-          updateRecordsPageIndicator();
-        }
+    // Instagram-style one-page-at-a-time swipe
+    setupInstagramSwiper(newSwiper, {
+      getPageCount: () => __recordsTotal,
+      getCurrentPage: () => __recordsCurrentPage,
+      onPageChange: (newPage) => {
+        __recordsCurrentPage = newPage;
+        updateRecordsPageIndicator();
       }
     });
   }
@@ -1015,6 +940,150 @@ function showPolygonRecordsCard(records, count) {
   hide(qs('#polygon-confirm-card'));
   show(card);
   pushOverlayState('polygon-records-card');
+}
+
+/* Instagram-style swiper: one page per swipe, no momentum skipping */
+function setupInstagramSwiper(container, opts) {
+  let startX = 0, startY = 0, isDragging = false, startScroll = 0, hasMoved = false;
+  const SWIPE_THRESHOLD = 40;  // min px to count as a swipe
+  const VELOCITY_THRESHOLD = 0.3; // px/ms for fast flick
+  let startTime = 0;
+
+  function goToPage(page) {
+    const clamped = Math.max(0, Math.min(page, opts.getPageCount() - 1));
+    const targetX = clamped * container.offsetWidth;
+    container.style.overflowX = 'auto';
+    container.scrollTo({ left: targetX, behavior: 'smooth' });
+    // Re-hide overflow after animation
+    setTimeout(() => { container.style.overflowX = 'hidden'; }, 350);
+    if (clamped !== opts.getCurrentPage()) {
+      opts.onPageChange(clamped);
+    }
+  }
+
+  container.addEventListener('touchstart', (e) => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startTime = Date.now();
+    isDragging = true;
+    hasMoved = false;
+    startScroll = opts.getCurrentPage() * container.offsetWidth;
+  }, { passive: true });
+
+  container.addEventListener('touchmove', (e) => {
+    if (!isDragging) return;
+    const dx = Math.abs(e.touches[0].clientX - startX);
+    const dy = Math.abs(e.touches[0].clientY - startY);
+    if (dx > dy && dx > 10) {
+      hasMoved = true;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  container.addEventListener('touchend', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    if (!hasMoved) return;
+    
+    const endX = e.changedTouches[0].clientX;
+    const dx = startX - endX;
+    const elapsed = Date.now() - startTime;
+    const velocity = Math.abs(dx) / elapsed;
+    const current = opts.getCurrentPage();
+
+    if (Math.abs(dx) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+      if (dx > 0) goToPage(current + 1); // swipe left → next
+      else goToPage(current - 1);         // swipe right → prev
+    } else {
+      goToPage(current); // snap back
+    }
+  }, { passive: true });
+
+  // Desktop: mouse drag
+  container.addEventListener('mousedown', (e) => {
+    startX = e.clientX;
+    startTime = Date.now();
+    isDragging = true;
+    hasMoved = false;
+    container.style.cursor = 'grabbing';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    if (Math.abs(e.clientX - startX) > 10) hasMoved = true;
+  });
+  document.addEventListener('mouseup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    container.style.cursor = '';
+    if (!hasMoved) return;
+    
+    const dx = startX - e.clientX;
+    const elapsed = Date.now() - startTime;
+    const velocity = Math.abs(dx) / elapsed;
+    const current = opts.getCurrentPage();
+
+    if (Math.abs(dx) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+      if (dx > 0) goToPage(current + 1);
+      else goToPage(current - 1);
+    } else {
+      goToPage(current);
+    }
+  });
+
+  // Desktop: wheel
+  let wheelLocked = false;
+  container.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    if (wheelLocked) return;
+    const current = opts.getCurrentPage();
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      if (e.deltaX > 30) { goToPage(current + 1); wheelLocked = true; }
+      else if (e.deltaX < -30) { goToPage(current - 1); wheelLocked = true; }
+    } else {
+      if (e.deltaY > 30) { goToPage(current + 1); wheelLocked = true; }
+      else if (e.deltaY < -30) { goToPage(current - 1); wheelLocked = true; }
+    }
+    if (wheelLocked) setTimeout(() => { wheelLocked = false; }, 500);
+  }, { passive: false });
+}
+
+/* Setup media scroll listeners inside record pages */
+function setupMediaScrollListeners(swiperEl) {
+  swiperEl.querySelectorAll('.pr-media-section').forEach(section => {
+    const mediaCount = parseInt(section.dataset.mediaCount || '0', 10);
+    if (mediaCount <= 1) return;
+
+    const scrollables = section.querySelectorAll('[data-media-scroll]');
+    const counter = section.querySelector('[data-media-counter]');
+    const dotsContainer = section.closest('.polygon-record-page')?.querySelector('[data-media-dots]');
+    let mediaTimer = null;
+
+    scrollables.forEach(half => {
+      half.addEventListener('scroll', () => {
+        const itemW = half.offsetWidth;
+        if (itemW <= 0) return;
+        const currentIdx = Math.round(half.scrollLeft / itemW);
+
+        scrollables.forEach(other => {
+          if (other !== half) other.scrollLeft = currentIdx * other.offsetWidth;
+        });
+
+        if (dotsContainer) {
+          dotsContainer.querySelectorAll('span').forEach((dot, di) => {
+            dot.classList.toggle('active', di === currentIdx);
+          });
+        }
+
+        if (counter) {
+          counter.textContent = (currentIdx + 1) + '/' + mediaCount;
+          counter.classList.add('visible');
+          clearTimeout(mediaTimer);
+          mediaTimer = setTimeout(() => counter.classList.remove('visible'), 1000);
+        }
+      });
+    });
+  });
 }
 
 function buildRecordsDots() {
@@ -6743,16 +6812,7 @@ window.addEventListener('popstate', (event) => {
     btn.title = t('useMyLocation');
     btn.style.display = 'none';
     btn.onclick = () => {
-      geoFindMeToggle();
-      if (currentUser && currentUser.role === 'user') {
-        const olayCard = qs('#olay-card');
-        if (olayCard) {
-          show(olayCard);
-          ensureBackButton();
-          const mapEl = document.getElementById('map');
-          if (mapEl) mapEl.classList.add('blur-background');
-        }
-      }
+      geoFindMeWithPolygonFlow();
     };
     
     const themeBtn = qs('#btn-theme-toggle');
