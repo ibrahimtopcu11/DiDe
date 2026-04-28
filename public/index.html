@@ -340,7 +340,7 @@
       <!-- LOGIN -->
       <section id="login-card" class="card">
         <div class="card-title-line">
-          <button class="back-btn" type="button" data-i18n-title="back" onclick="history.back();">
+          <button class="back-btn" type="button" data-i18n-title="back" onclick="if(typeof restoreMapViewFromOverlay==='function')restoreMapViewFromOverlay();">
             <img src="/back.svg" data-i18n-alt="back" />
           </button>
           <h3 style="margin:0;" data-i18n="login">Login</h3>

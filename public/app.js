@@ -681,15 +681,7 @@ async function loadPolygonLayer() {
         dashArray: '5,5'
       }),
       onEachFeature: (feature, layer) => {
-        const props = feature.properties || {};
-        const pk1 = APP_CONFIG.polygonPk1;
-        const pk2 = APP_CONFIG.polygonPk2;
-        let label = '';
-        if (pk1 && props[pk1] != null) label += props[pk1];
-        if (pk2 && props[pk2] != null) label += (label ? ' / ' : '') + props[pk2];
-        if (label) {
-          layer.bindTooltip(label, { sticky: true, opacity: 0.85 });
-        }
+        // No tooltip — user requested removal of grid label on hover
       }
     });
     __polygonLayer.addTo(map);
@@ -807,7 +799,8 @@ async function polygonConfirmYes() {
     if (r.ok) {
       const data = await r.json();
       if (data.count > 0) {
-        showPolygonRecordsCard(data.records, data.count);
+        // Show intermediate "Review existing records?" question
+        showReviewRecordsQuestion(data.records, data.count);
         return;
       }
     }
@@ -817,6 +810,65 @@ async function polygonConfirmYes() {
 
   // No existing records, go straight to VG3 (form)
   openEventFormAfterPolygon();
+}
+
+/* VG2 intermediate: Ask user if they want to review existing records */
+function showReviewRecordsQuestion(records, count) {
+  // Reuse polygon-confirm-card to show the review question
+  const card = qs('#polygon-confirm-card');
+  if (!card) { openEventFormAfterPolygon(); return; }
+
+  const content = card.querySelector('.polygon-flow-content');
+  if (!content) { openEventFormAfterPolygon(); return; }
+
+  // Save records for later
+  window.__pendingReviewRecords = records;
+  window.__pendingReviewCount = count;
+
+  // Replace content with review question
+  content.innerHTML = `
+    <h3 style="margin:0 0 8px 0;">${count} ${t('existingRecordCount', { count: count })}</h3>
+    <div style="font-size:1rem;margin:8px 0 16px;color:var(--muted,#666);">Review existing records?</div>
+    <div class="inline" style="gap:16px;">
+      <button type="button" id="btn-review-records-yes" class="polygon-action-btn polygon-action-tick" title="Review" style="width:52px;height:52px;font-size:1.3rem;">&#10003;</button>
+      <button type="button" id="btn-review-records-no" class="polygon-action-btn polygon-action-cross" title="Skip" style="width:52px;height:52px;font-size:1.3rem;">&#10007;</button>
+    </div>
+  `;
+
+  show(card);
+  pushOverlayState('polygon-confirm-card');
+
+  // Attach handlers
+  qs('#btn-review-records-yes')?.addEventListener('click', () => {
+    hide(card);
+    restorePolygonConfirmContent();
+    showPolygonRecordsCard(window.__pendingReviewRecords, window.__pendingReviewCount);
+  });
+  qs('#btn-review-records-no')?.addEventListener('click', () => {
+    hide(card);
+    restorePolygonConfirmContent();
+    openEventFormAfterPolygon();
+  });
+}
+
+/* Restore the original polygon confirm card content */
+function restorePolygonConfirmContent() {
+  const card = qs('#polygon-confirm-card');
+  if (!card) return;
+  const content = card.querySelector('.polygon-flow-content');
+  if (!content) return;
+  content.innerHTML = `
+    <h3 style="margin:0 0 8px 0;" data-i18n="confirmRegion">Are you in the correct grid?</h3>
+    <div id="polygon-confirm-info" style="font-size:1.1rem;font-weight:600;margin:8px 0 16px;"></div>
+    <div class="inline" style="gap:12px;">
+      <button type="button" id="btn-polygon-confirm-yes" class="btn primary" style="min-width:80px;" data-i18n="yes">Yes</button>
+      <button type="button" id="btn-polygon-confirm-no" class="btn ghost" style="min-width:80px;" data-i18n="no">No</button>
+    </div>
+  `;
+  // Re-apply translations if i18n is available
+  if (typeof updateUIWithNewLanguage === 'function') {
+    try { updateUIWithNewLanguage(); } catch {}
+  }
 }
 
 /* ===================== VG2: Existing Records Review ===================== */
@@ -934,12 +986,22 @@ function showPolygonRecordsCard(records, count) {
 }
 
 /* Instagram-style swiper: GPU-accelerated CSS transform animation */
+/* Instagram-style swiper: GPU-accelerated, strict one-page-per-gesture */
+// Store reference to cleanup previous swiper document listeners
+let __swiperCleanup = null;
+
 function setupInstagramSwiper(container, track, opts) {
+  // Clean up previous document-level listeners if any
+  if (__swiperCleanup) {
+    __swiperCleanup();
+    __swiperCleanup = null;
+  }
+
   let startX = 0, startY = 0, isDragging = false, hasMoved = false;
   let dragOffsetX = 0;
   let startTime = 0;
   let isHorizontalSwipe = null;
-  let isAnimating = false; // Block all input during animation
+  let isAnimating = false;
 
   function getPageWidth() { return container.offsetWidth || 1; }
 
@@ -948,7 +1010,7 @@ function setupInstagramSwiper(container, track, opts) {
     if (animate !== false) {
       isAnimating = true;
       track.style.transition = 'transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-      setTimeout(() => { isAnimating = false; }, 350);
+      setTimeout(() => { isAnimating = false; }, 380);
     } else {
       track.style.transition = 'none';
     }
@@ -980,7 +1042,7 @@ function setupInstagramSwiper(container, track, opts) {
     if (!isDragging || isAnimating) return;
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-    if (isHorizontalSwipe === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+    if (isHorizontalSwipe === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
       isHorizontalSwipe = Math.abs(dx) > Math.abs(dy);
     }
     if (isHorizontalSwipe) {
@@ -1002,8 +1064,8 @@ function setupInstagramSwiper(container, track, opts) {
     const elapsed = Math.max(Date.now() - startTime, 1);
     const velocity = Math.abs(dragOffsetX) / elapsed;
     const current = opts.getCurrentPage();
-    const threshold = getPageWidth() * 0.20;
-    if (Math.abs(dragOffsetX) > threshold || (velocity > 0.35 && Math.abs(dragOffsetX) > 30)) {
+    const threshold = getPageWidth() * 0.22;
+    if (Math.abs(dragOffsetX) > threshold || (velocity > 0.4 && Math.abs(dragOffsetX) > 35)) {
       if (dragOffsetX < 0) goToPage(current + 1);
       else goToPage(current - 1);
     } else {
@@ -1026,7 +1088,7 @@ function setupInstagramSwiper(container, track, opts) {
   const onMouseMove = (e) => {
     if (!isDragging || isAnimating) return;
     const dx = e.clientX - startX;
-    if (Math.abs(dx) > 8) {
+    if (Math.abs(dx) > 10) {
       hasMoved = true;
       dragOffsetX = dx;
       const current = opts.getCurrentPage();
@@ -1044,8 +1106,8 @@ function setupInstagramSwiper(container, track, opts) {
     const elapsed = Math.max(Date.now() - startTime, 1);
     const velocity = Math.abs(dragOffsetX) / elapsed;
     const current = opts.getCurrentPage();
-    const threshold = getPageWidth() * 0.20;
-    if (Math.abs(dragOffsetX) > threshold || (velocity > 0.35 && Math.abs(dragOffsetX) > 30)) {
+    const threshold = getPageWidth() * 0.22;
+    if (Math.abs(dragOffsetX) > threshold || (velocity > 0.4 && Math.abs(dragOffsetX) > 35)) {
       if (dragOffsetX < 0) goToPage(current + 1);
       else goToPage(current - 1);
     } else {
@@ -1056,7 +1118,7 @@ function setupInstagramSwiper(container, track, opts) {
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
 
-  // ── Wheel (desktop trackpad & mouse) — accumulate then move one page ──
+  // ── Wheel — accumulate then move one page ──
   let wheelLocked = false;
   let wheelAccum = 0;
   let wheelResetTimer = null;
@@ -1077,6 +1139,12 @@ function setupInstagramSwiper(container, track, opts) {
       setTimeout(() => { wheelLocked = false; }, 700);
     }
   }, { passive: false });
+
+  // Store cleanup function to remove document listeners on next init
+  __swiperCleanup = () => {
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  };
 
   goToPage(opts.getCurrentPage(), false);
 }
@@ -5866,6 +5934,21 @@ function goDefaultScreen(){
   hide(qs('#polygon-records-card'));
   hide(qs('#polygon-confirm-card'));
 
+  // Clear polygon highlight (colored grid)
+  if (typeof clearPolygonHighlight === 'function') {
+    try { clearPolygonHighlight(); } catch {}
+  }
+  // Reset polygon state
+  __currentPolygonPkValues = null;
+  __currentPolygonGeometry = null;
+  __pendingLocationLat = null;
+  __pendingLocationLng = null;
+
+  // Restore polygon confirm card to original content if it was modified
+  if (typeof restorePolygonConfirmContent === 'function') {
+    try { restorePolygonConfirmContent(); } catch {}
+  }
+
   const mapEl = document.getElementById('map');
   if (mapEl) mapEl.classList.remove('blur-background');
   document.querySelectorAll('.header-back-btn, .card-back-btn').forEach(btn => btn.remove());
@@ -7404,8 +7487,6 @@ document.addEventListener('DOMContentLoaded', () => {
       hide(qs('#forgot-card'));
       hide(qs('#olay-card'));
       show(qs('#login-card'));
-      
-      ensureAuthBackButton('#login-card');
       
       const mapEl = document.getElementById('map');
       if (mapEl) mapEl.classList.add('blur-background');
