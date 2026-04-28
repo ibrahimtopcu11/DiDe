@@ -937,17 +937,18 @@ function showPolygonRecordsCard(records, count) {
 function setupInstagramSwiper(container, track, opts) {
   let startX = 0, startY = 0, isDragging = false, hasMoved = false;
   let dragOffsetX = 0;
-  const SWIPE_THRESHOLD = 40;
-  const VELOCITY_THRESHOLD = 0.25;
   let startTime = 0;
-  let isHorizontalSwipe = null; // null = undecided, true/false = locked
+  let isHorizontalSwipe = null;
+  let isAnimating = false; // Block all input during animation
 
   function getPageWidth() { return container.offsetWidth || 1; }
 
   function goToPage(page, animate) {
     const clamped = Math.max(0, Math.min(page, opts.getPageCount() - 1));
     if (animate !== false) {
-      track.style.transition = 'transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      isAnimating = true;
+      track.style.transition = 'transform 0.32s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+      setTimeout(() => { isAnimating = false; }, 350);
     } else {
       track.style.transition = 'none';
     }
@@ -963,8 +964,9 @@ function setupInstagramSwiper(container, track, opts) {
     track.style.transform = 'translateX(' + (basePx + extraPx) + 'px)';
   }
 
-  // Touch events
+  // ── Touch ──
   container.addEventListener('touchstart', (e) => {
+    if (isAnimating) return;
     startX = e.touches[0].clientX;
     startY = e.touches[0].clientY;
     startTime = Date.now();
@@ -975,48 +977,44 @@ function setupInstagramSwiper(container, track, opts) {
   }, { passive: true });
 
   container.addEventListener('touchmove', (e) => {
-    if (!isDragging) return;
+    if (!isDragging || isAnimating) return;
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
-
-    // Lock direction on first significant movement
     if (isHorizontalSwipe === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
       isHorizontalSwipe = Math.abs(dx) > Math.abs(dy);
     }
-
     if (isHorizontalSwipe) {
       e.preventDefault();
       hasMoved = true;
       dragOffsetX = dx;
-      // Dampen at edges
       const current = opts.getCurrentPage();
       if ((current === 0 && dx > 0) || (current === opts.getPageCount() - 1 && dx < 0)) {
-        dragOffsetX = dx * 0.3;
+        dragOffsetX = dx * 0.25;
       }
       setDragTransform(dragOffsetX);
     }
   }, { passive: false });
 
   container.addEventListener('touchend', (e) => {
-    if (!isDragging) return;
+    if (!isDragging || isAnimating) return;
     isDragging = false;
     if (!hasMoved) return;
-
-    const elapsed = Date.now() - startTime;
+    const elapsed = Math.max(Date.now() - startTime, 1);
     const velocity = Math.abs(dragOffsetX) / elapsed;
     const current = opts.getCurrentPage();
-
-    if (Math.abs(dragOffsetX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+    const threshold = getPageWidth() * 0.20;
+    if (Math.abs(dragOffsetX) > threshold || (velocity > 0.35 && Math.abs(dragOffsetX) > 30)) {
       if (dragOffsetX < 0) goToPage(current + 1);
       else goToPage(current - 1);
     } else {
-      goToPage(current); // snap back
+      goToPage(current);
     }
     dragOffsetX = 0;
   }, { passive: true });
 
-  // Mouse drag (desktop)
+  // ── Mouse drag (desktop) ──
   container.addEventListener('mousedown', (e) => {
+    if (isAnimating) return;
     startX = e.clientX;
     startTime = Date.now();
     isDragging = true;
@@ -1025,31 +1023,29 @@ function setupInstagramSwiper(container, track, opts) {
     container.style.cursor = 'grabbing';
     e.preventDefault();
   });
-
   const onMouseMove = (e) => {
-    if (!isDragging) return;
+    if (!isDragging || isAnimating) return;
     const dx = e.clientX - startX;
-    if (Math.abs(dx) > 5) {
+    if (Math.abs(dx) > 8) {
       hasMoved = true;
       dragOffsetX = dx;
       const current = opts.getCurrentPage();
       if ((current === 0 && dx > 0) || (current === opts.getPageCount() - 1 && dx < 0)) {
-        dragOffsetX = dx * 0.3;
+        dragOffsetX = dx * 0.25;
       }
       setDragTransform(dragOffsetX);
     }
   };
   const onMouseUp = (e) => {
-    if (!isDragging) return;
+    if (!isDragging || isAnimating) return;
     isDragging = false;
     container.style.cursor = '';
     if (!hasMoved) return;
-
-    const elapsed = Date.now() - startTime;
+    const elapsed = Math.max(Date.now() - startTime, 1);
     const velocity = Math.abs(dragOffsetX) / elapsed;
     const current = opts.getCurrentPage();
-
-    if (Math.abs(dragOffsetX) > SWIPE_THRESHOLD || velocity > VELOCITY_THRESHOLD) {
+    const threshold = getPageWidth() * 0.20;
+    if (Math.abs(dragOffsetX) > threshold || (velocity > 0.35 && Math.abs(dragOffsetX) > 30)) {
       if (dragOffsetX < 0) goToPage(current + 1);
       else goToPage(current - 1);
     } else {
@@ -1060,19 +1056,28 @@ function setupInstagramSwiper(container, track, opts) {
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
 
-  // Wheel (desktop)
+  // ── Wheel (desktop trackpad & mouse) — accumulate then move one page ──
   let wheelLocked = false;
+  let wheelAccum = 0;
+  let wheelResetTimer = null;
+
   container.addEventListener('wheel', (e) => {
     e.preventDefault();
-    if (wheelLocked) return;
-    const current = opts.getCurrentPage();
+    if (isAnimating || wheelLocked) return;
     const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    if (delta > 20) { goToPage(current + 1); wheelLocked = true; }
-    else if (delta < -20) { goToPage(current - 1); wheelLocked = true; }
-    if (wheelLocked) setTimeout(() => { wheelLocked = false; }, 450);
+    wheelAccum += delta;
+    clearTimeout(wheelResetTimer);
+    wheelResetTimer = setTimeout(() => { wheelAccum = 0; }, 200);
+    if (Math.abs(wheelAccum) >= 80) {
+      const current = opts.getCurrentPage();
+      if (wheelAccum > 0) goToPage(current + 1);
+      else goToPage(current - 1);
+      wheelAccum = 0;
+      wheelLocked = true;
+      setTimeout(() => { wheelLocked = false; }, 700);
+    }
   }, { passive: false });
 
-  // Initial position
   goToPage(opts.getCurrentPage(), false);
 }
 
@@ -5857,6 +5862,14 @@ function anyOverlayVisible(){
 
 
 function goDefaultScreen(){
+  // Always close all polygon overlays
+  hide(qs('#polygon-records-card'));
+  hide(qs('#polygon-confirm-card'));
+
+  const mapEl = document.getElementById('map');
+  if (mapEl) mapEl.classList.remove('blur-background');
+  document.querySelectorAll('.header-back-btn, .card-back-btn').forEach(btn => btn.remove());
+
   if (currentUser){
     hide(qs('#login-card')); 
     hide(qs('#register-card')); 
@@ -5867,6 +5880,7 @@ function goDefaultScreen(){
     hide(qs('#register-card')); 
     hide(qs('#forgot-card')); 
     hide(qs('#olay-card'));
+    hide(qs('#admin-card'));
   }
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -6409,35 +6423,31 @@ function ensureAuthBackButton(cardSelector){
   const card = qs(cardSelector);
   if (!card) return;
 
+  // Remove any previous back buttons
   card.querySelectorAll('.card-back-btn').forEach(btn => btn.remove());
+  document.querySelectorAll('.header-back-btn').forEach(btn => btn.remove());
 
-  const header = document.querySelector('header');
-  if (!header) return;
-
-  const existingBtn = header.querySelector('.header-back-btn');
-  if (existingBtn) existingBtn.remove();
-
-  const headerBackBtn = document.createElement('button');
-  headerBackBtn.className = 'btn primary icon-btn header-back-btn';
-  headerBackBtn.innerHTML = '<img src="/back.svg" alt="' + t('back') + '" width="20" height="20" loading="lazy" />';
-  headerBackBtn.title = t('back');
-  headerBackBtn.onclick = (e) => {
+  // Create back button INSIDE the card (not in header — header-back-btn is display:none)
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'btn primary icon-btn card-back-btn auth-back-btn';
+  backBtn.innerHTML = '<img src="/back.svg" alt="' + t('back') + '" width="20" height="20" loading="lazy" />';
+  backBtn.title = t('back');
+  backBtn.onclick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
     restoreMapViewFromOverlay();
-    
     try {
       if (window.history.state && window.history.state.overlay) {
         window.history.back();
       }
-    } catch(e) {
-      console.warn('History back error:', e);
+    } catch(err) {
+      console.warn('History back error:', err);
     }
   };
 
-  const wrap = header.querySelector('.wrap') || header;
-  wrap.insertBefore(headerBackBtn, wrap.firstChild);
+  // Insert at the very top of the card
+  card.insertBefore(backBtn, card.firstChild);
 }
 
 function ensureBackButton(){
