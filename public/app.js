@@ -10,6 +10,7 @@ let __currentPolygonPkValues = null; // PK values of matched polygon
 let __currentPolygonGeometry = null; // GeoJSON geometry of matched polygon
 let __pendingLocationLat = null;     // Lat waiting for polygon confirm
 let __pendingLocationLng = null;     // Lng waiting for polygon confirm
+let __polygonFlowLocked = false;     // True after polygon confirm Yes — blocks map clicks
 
 // i18n fallback functions
 if (typeof window.t !== 'function') {
@@ -778,6 +779,7 @@ function polygonConfirmCancel() {
   __currentPolygonGeometry = null;
   __pendingLocationLat = null;
   __pendingLocationLng = null;
+  __polygonFlowLocked = false;
 
   const mapEl = document.getElementById('map');
   if (mapEl) mapEl.classList.remove('blur-background');
@@ -788,6 +790,7 @@ window.polygonConfirmCancel = polygonConfirmCancel;
 
 async function polygonConfirmYes() {
   hide(qs('#polygon-confirm-card'));
+  __polygonFlowLocked = true; // Block further map clicks during this flow
 
   // VG2: Check existing records in this polygon
   try {
@@ -827,11 +830,11 @@ function showReviewRecordsQuestion(records, count) {
 
   // Replace content with review question
   content.innerHTML = `
-    <h3 style="margin:0 0 8px 0;">${count} ${t('existingRecordCount', { count: count })}</h3>
-    <div style="font-size:1rem;margin:8px 0 16px;color:var(--muted,#666);">Review existing records?</div>
-    <div class="inline" style="gap:16px;">
-      <button type="button" id="btn-review-records-yes" class="polygon-action-btn polygon-action-tick" title="Review" style="width:52px;height:52px;font-size:1.3rem;">&#10003;</button>
-      <button type="button" id="btn-review-records-no" class="polygon-action-btn polygon-action-cross" title="Skip" style="width:52px;height:52px;font-size:1.3rem;">&#10007;</button>
+    <h3 style="margin:0 0 8px 0;">${t('existingRecordCount', { count: count })}</h3>
+    <div style="font-size:1rem;margin:8px 0 16px;color:var(--muted,#666);">${t('reviewExistingRecords')}</div>
+    <div style="display:flex;justify-content:center;gap:32px;">
+      <button type="button" id="btn-review-records-yes" class="polygon-action-btn polygon-action-tick" title="${t('yes')}">&#10003;</button>
+      <button type="button" id="btn-review-records-no" class="polygon-action-btn polygon-action-cross" title="${t('no')}">&#10007;</button>
     </div>
   `;
 
@@ -1242,6 +1245,7 @@ function polygonRecordsContinue() {
 /* ===================== VG3: Open Form with Polygon Data ===================== */
 function openEventFormAfterPolygon() {
   clearPolygonHighlight();
+  __polygonFlowLocked = false;
 
   const latEl = qs('#lat');
   const lngEl = qs('#lng');
@@ -5361,6 +5365,9 @@ function geoFindMeStart() {
 
 /* GPS with polygon flow (header button) — toggles tracking on second press */
 function geoFindMeWithPolygonFlow() {
+  // Block if polygon flow is active (after confirm Yes)
+  if (__polygonFlowLocked) return;
+
   // Toggle: if already tracking, stop and reset
   if (liveWatchId !== null) {
     stopLiveLocation();
@@ -5888,6 +5895,7 @@ function restoreMapViewFromOverlay(){
   if (typeof clearPolygonHighlight === 'function') {
     try { clearPolygonHighlight(); } catch {}
   }
+  __polygonFlowLocked = false;
 
   if (typeof resetEdit === 'function') {
     try { 
@@ -5943,6 +5951,7 @@ function goDefaultScreen(){
   __currentPolygonGeometry = null;
   __pendingLocationLat = null;
   __pendingLocationLng = null;
+  __polygonFlowLocked = false;
 
   // Restore polygon confirm card to original content if it was modified
   if (typeof restorePolygonConfirmContent === 'function') {
@@ -6588,8 +6597,6 @@ qs('#goto-forgot')?.addEventListener('click', (e) => {
   resetForgotForm();
   showForgotStep(1);
   
-  ensureAuthBackButton('#forgot-card');
-  
   window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
@@ -6718,8 +6725,6 @@ qs('#toggle-register')?.addEventListener('click', (e) => {
   hide(qs('#login-card')); 
   hide(qs('#forgot-card')); 
   show(qs('#register-card'));
-  
-  ensureAuthBackButton('#register-card');
   
   const mapEl = document.getElementById('map');
   if (mapEl) mapEl.classList.add('blur-background');
@@ -6851,6 +6856,11 @@ function attachMapClickForLoggedIn(){
     stopLiveLocation(); 
     
     if (!allowBlackMarker()) {
+      return;
+    }
+
+    // Block clicks during polygon flow (after confirm Yes)
+    if (__polygonFlowLocked) {
       return;
     }
     
