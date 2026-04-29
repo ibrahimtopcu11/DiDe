@@ -2487,10 +2487,22 @@ th:has(#btn-add-type){
 /* Action buttons */
 #polygon-records-actions {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 16px 20px;
+  border-top: 1px solid var(--border, #e5e5e5);
+}
+.pr-add-label {
+  font-size: clamp(0.85rem, 3.5vw, 1rem);
+  font-weight: 600;
+  color: var(--text, #333);
+  text-align: center;
+  margin-bottom: 12px;
+}
+.pr-action-buttons {
+  display: flex;
   justify-content: center;
   gap: 32px;
-  padding: 14px 0 20px;
-  border-top: 1px solid var(--border, #e5e5e5);
 }
 .polygon-action-btn {
   width: 56px;
