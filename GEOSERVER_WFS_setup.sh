@@ -137,6 +137,19 @@ log "Creating system users and directories"
 adduser --system --group --home "$GEOSERVER_HOME" --shell /usr/sbin/nologin geoserver >/dev/null 2>&1 || true
 adduser --system --group --home "$AUTH_HOME" --shell /usr/sbin/nologin geoserver-auth >/dev/null 2>&1 || true
 
+# Ensure dide-app group exists and add geoserver + geoserver-auth to it
+groupadd dide-app 2>/dev/null || true
+usermod -aG dide-app geoserver 2>/dev/null || true
+usermod -aG dide-app geoserver-auth 2>/dev/null || true
+
+# Ensure .env file is readable by dide-app group
+if [[ -f "$ENV_FILE" ]]; then
+  ENV_DIR="$(dirname "$ENV_FILE")"
+  chgrp dide-app "$ENV_FILE" 2>/dev/null || true
+  chmod g+r "$ENV_FILE" 2>/dev/null || true
+  chmod g+rx "$ENV_DIR" 2>/dev/null || true
+fi
+
 mkdir -p "$GEOSERVER_HOME" "$GEOSERVER_DATA_DIR" "$GEOSERVER_TMP"
 chown -R geoserver:geoserver "$GEOSERVER_HOME" "$GEOSERVER_DATA_DIR" "$GEOSERVER_TMP"
 
@@ -307,40 +320,76 @@ systemctl daemon-reload
 systemctl enable --now geoserver-auth
 
 log "Configuring Nginx reverse proxy + WFS auth_request"
-rm -f /etc/nginx/sites-enabled/default || true
 
-cat >"/etc/nginx/sites-available/${NGINX_SITE_NAME}" <<EOF
-server {
-    listen 80;
-    server_name ${NGINX_SERVER_NAME};
+# ── Detect SSL certificates (Let's Encrypt or custom) ──
+SSL_CERT=""
+SSL_KEY=""
+SSL_DOMAIN=""
 
+# Try to detect domain from existing nginx configs
+for f in /etc/nginx/sites-available/*; do
+  [[ -f "$f" ]] || continue
+  d="$(grep -oP 'server_name\s+\K[^;_\s]+' "$f" 2>/dev/null | head -1)"
+  if [[ -n "$d" && "$d" != "_" && "$d" != "localhost" ]]; then
+    SSL_DOMAIN="$d"
+    break
+  fi
+done
+
+# Use --server-name if provided and not "_"
+if [[ "$NGINX_SERVER_NAME" != "_" && -n "$NGINX_SERVER_NAME" ]]; then
+  SSL_DOMAIN="$NGINX_SERVER_NAME"
+fi
+
+# Check for Let's Encrypt cert
+if [[ -n "$SSL_DOMAIN" ]]; then
+  LE_CERT="/etc/letsencrypt/live/${SSL_DOMAIN}/fullchain.pem"
+  LE_KEY="/etc/letsencrypt/live/${SSL_DOMAIN}/privkey.pem"
+  if [[ -f "$LE_CERT" && -f "$LE_KEY" ]]; then
+    SSL_CERT="$LE_CERT"
+    SSL_KEY="$LE_KEY"
+    log "Found Let's Encrypt SSL for: ${SSL_DOMAIN}"
+  fi
+fi
+
+# ── Write Nginx config ──
+NGINX_CONF="/etc/nginx/sites-available/${NGINX_SITE_NAME}"
+
+# Backup existing config
+if [[ -f "$NGINX_CONF" ]]; then
+  cp "$NGINX_CONF" "${NGINX_CONF}.bak.$(date +%s)"
+fi
+
+# WFS location blocks (shared between HTTP and HTTPS)
+WFS_LOCATIONS=$(cat <<'WFSBLOCKS'
     location = /_auth_wfs {
         internal;
-        proxy_pass http://${AUTH_BIND}/auth;
+        proxy_pass http://AUTH_BIND_PLACEHOLDER/auth;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
-        proxy_set_header Authorization \$http_authorization;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header Host \$host;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Host $host;
     }
 
     location / {
-        proxy_pass http://${NODE_UPSTREAM};
+        proxy_pass http://NODE_UPSTREAM_PLACEHOLDER;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50M;
     }
 
     location /geoserver/ {
-        proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_pass http://GS_UPSTREAM_PLACEHOLDER/geoserver/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
         proxy_read_timeout 120;
     }
@@ -348,14 +397,12 @@ server {
     location ^~ /wfs {
         auth_request /_auth_wfs;
         error_page 401 = @wfs_401;
-
         proxy_set_header Authorization "";
-        proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
+        proxy_pass http://GS_UPSTREAM_PLACEHOLDER/geoserver/wfs;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
         proxy_read_timeout 300;
         proxy_connect_timeout 60;
@@ -365,14 +412,12 @@ server {
     location ^~ /geoserver/wfs {
         auth_request /_auth_wfs;
         error_page 401 = @wfs_401;
-
         proxy_set_header Authorization "";
-        proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-
+        proxy_pass http://GS_UPSTREAM_PLACEHOLDER/geoserver/wfs;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_buffering off;
         proxy_read_timeout 300;
         proxy_connect_timeout 60;
@@ -383,11 +428,58 @@ server {
         add_header WWW-Authenticate 'Basic realm="DiDe WFS"' always;
         return 401;
     }
+WFSBLOCKS
+)
+
+# Replace placeholders
+WFS_LOCATIONS="${WFS_LOCATIONS//AUTH_BIND_PLACEHOLDER/${AUTH_BIND}}"
+WFS_LOCATIONS="${WFS_LOCATIONS//NODE_UPSTREAM_PLACEHOLDER/${NODE_UPSTREAM}}"
+WFS_LOCATIONS="${WFS_LOCATIONS//GS_UPSTREAM_PLACEHOLDER/${GEOSERVER_UPSTREAM}}"
+
+if [[ -n "$SSL_CERT" && -n "$SSL_KEY" ]]; then
+  # ── SSL + HTTP redirect config ──
+  cat >"$NGINX_CONF" <<EOF
+# HTTPS server (DiDe + GeoServer + WFS)
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${SSL_DOMAIN};
+
+    ssl_certificate ${SSL_CERT};
+    ssl_certificate_key ${SSL_KEY};
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+${WFS_LOCATIONS}
+}
+
+# HTTP → HTTPS redirect
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name ${SSL_DOMAIN};
+    return 301 https://\$host\$request_uri;
 }
 EOF
+  log "Nginx configured with SSL for ${SSL_DOMAIN}"
+else
+  # ── HTTP-only config (no SSL) ──
+  cat >"$NGINX_CONF" <<EOF
+# HTTP server (DiDe + GeoServer + WFS) — no SSL
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name ${NGINX_SERVER_NAME};
 
-ln -sf "/etc/nginx/sites-available/${NGINX_SITE_NAME}" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
-find /etc/nginx/sites-enabled -maxdepth 1 -type l ! -name "${NGINX_SITE_NAME}" -exec rm -f {} \; || true
+${WFS_LOCATIONS}
+}
+EOF
+  log "Nginx configured (HTTP only, no SSL certificate found)"
+fi
+
+ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
+# Remove only the default site, NOT other custom sites
+rm -f /etc/nginx/sites-enabled/default || true
 nginx -t
 systemctl reload nginx
 
@@ -546,8 +638,17 @@ curl -fsS "http://${GEOSERVER_UPSTREAM}/geoserver/rest/workspaces/${WORKSPACE}/d
 
 echo ""
 echo " Done."
-echo "GeoServer UI:  http://<SERVER_IP>/geoserver/"
-echo "WFS URL:       http://<SERVER_IP>/geoserver/wfs?service=WFS&request=GetCapabilities"
-echo "Test:"
-echo "  curl -I http://<SERVER_IP>/geoserver/wfs?service=WFS&request=GetCapabilities"
-echo "  curl -u 'USERNAME:PASSWORD' http://<SERVER_IP>/geoserver/wfs?service=WFS&request=GetCapabilities | head"
+if [[ -n "$SSL_CERT" && -n "$SSL_DOMAIN" ]]; then
+  echo "Site:          https://${SSL_DOMAIN}/"
+  echo "GeoServer UI:  https://${SSL_DOMAIN}/geoserver/"
+  echo "WFS URL:       https://${SSL_DOMAIN}/geoserver/wfs?service=WFS&request=GetCapabilities"
+  echo "Test:"
+  echo "  curl -sk https://${SSL_DOMAIN}/geoserver/wfs?service=WFS&request=GetCapabilities | head"
+  echo "  curl -sku 'USERNAME:PASSWORD' https://${SSL_DOMAIN}/wfs?service=WFS&request=GetCapabilities | head"
+else
+  echo "GeoServer UI:  http://<SERVER_IP>/geoserver/"
+  echo "WFS URL:       http://<SERVER_IP>/geoserver/wfs?service=WFS&request=GetCapabilities"
+  echo "Test:"
+  echo "  curl -I http://<SERVER_IP>/geoserver/wfs?service=WFS&request=GetCapabilities"
+  echo "  curl -u 'USERNAME:PASSWORD' http://<SERVER_IP>/geoserver/wfs?service=WFS&request=GetCapabilities | head"
+fi
