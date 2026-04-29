@@ -830,11 +830,11 @@ function showReviewRecordsQuestion(records, count) {
 
   // Replace content with review question
   content.innerHTML = `
-    <h3 style="margin:0 0 8px 0;">${t('existingRecordCount', { count: count })}</h3>
-    <div style="font-size:1rem;margin:8px 0 16px;color:var(--muted,#666);">${t('reviewExistingRecords')}</div>
+    <h3 style="margin:0 0 8px 0;" data-i18n="existingRecordCount" data-i18n-params='{"count":${count}}'>${t('existingRecordCount', { count: count })}</h3>
+    <div style="font-size:1rem;margin:8px 0 16px;color:var(--muted,#666);" data-i18n="reviewExistingRecords">${t('reviewExistingRecords')}</div>
     <div style="display:flex;justify-content:center;gap:32px;">
-      <button type="button" id="btn-review-records-yes" class="polygon-action-btn polygon-action-tick" title="${t('yes')}">&#10003;</button>
-      <button type="button" id="btn-review-records-no" class="polygon-action-btn polygon-action-cross" title="${t('no')}">&#10007;</button>
+      <button type="button" id="btn-review-records-yes" class="polygon-action-btn polygon-action-tick" data-i18n-title="yes" title="${t('yes')}">&#10003;</button>
+      <button type="button" id="btn-review-records-no" class="polygon-action-btn polygon-action-cross" data-i18n-title="no" title="${t('no')}">&#10007;</button>
     </div>
   `;
 
@@ -7407,9 +7407,16 @@ async function updateUIWithNewLanguage() {
   
   // ── General data-i18n attribute processor ──
   // Updates ALL elements with data-i18n, data-i18n-title, data-i18n-placeholder, data-i18n-alt
+  // Supports data-i18n-params='{"count":7}' for parameterized translations
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
-    if (key) el.textContent = t(key);
+    if (!key) return;
+    let params = null;
+    const paramsAttr = el.getAttribute('data-i18n-params');
+    if (paramsAttr) {
+      try { params = JSON.parse(paramsAttr); } catch {}
+    }
+    el.textContent = t(key, params);
   });
   document.querySelectorAll('[data-i18n-title]').forEach(el => {
     const key = el.getAttribute('data-i18n-title');
