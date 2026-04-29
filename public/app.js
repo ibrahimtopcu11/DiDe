@@ -7404,6 +7404,38 @@ async function updateUIWithNewLanguage() {
       await loadExistingEvents({ publicMode: true });
     }
   }
+  
+  // ── General data-i18n attribute processor ──
+  // Updates ALL elements with data-i18n, data-i18n-title, data-i18n-placeholder, data-i18n-alt
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key) el.textContent = t(key);
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.getAttribute('data-i18n-title');
+    if (key) el.title = t(key);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    const key = el.getAttribute('data-i18n-placeholder');
+    if (key) el.placeholder = t(key);
+  });
+  document.querySelectorAll('[data-i18n-alt]').forEach(el => {
+    const key = el.getAttribute('data-i18n-alt');
+    if (key) el.alt = t(key);
+  });
+  document.querySelectorAll('[data-i18n-aria-label]').forEach(el => {
+    const key = el.getAttribute('data-i18n-aria-label');
+    if (key) el.setAttribute('aria-label', t(key));
+  });
+
+  // Update polygon records count if visible
+  const prCount = qs('#polygon-records-count');
+  if (prCount && prCount.textContent) {
+    const match = prCount.textContent.match(/\d+/);
+    if (match) {
+      prCount.textContent = t('existingRecordCount', { count: parseInt(match[0], 10) });
+    }
+  }
 }
 
 
