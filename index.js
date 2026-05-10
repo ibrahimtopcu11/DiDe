@@ -644,7 +644,31 @@ app.get('/api/polygon-layer', async (req, res) => {
   }
 });
 
-// POST /api/polygon/find  –  Given lat/lng, find the containing polygon
+// GET /api/polygon/grid-data  –  Return all polygon grid rows with PK columns for admin region tab
+app.get('/api/polygon/grid-data', requireAuth, async (req, res) => {
+  if (!POLYGON_TABLE || (!POLYGON_PK1 && !POLYGON_PK2)) {
+    return res.json({ ok: true, rows: [], pk1: null, pk2: null });
+  }
+  try {
+    const table = assertSafeIdent(POLYGON_TABLE, 'table');
+    const cols = [];
+    if (POLYGON_PK1) cols.push(assertSafeIdent(POLYGON_PK1, 'column'));
+    if (POLYGON_PK2) cols.push(assertSafeIdent(POLYGON_PK2, 'column'));
+    const selectCols = cols.map(c => `t.${c}`).join(', ');
+    const q = `SELECT ${selectCols}, ST_AsGeoJSON(ST_Centroid(t.geom))::jsonb AS centroid, ST_AsGeoJSON(t.geom)::jsonb AS geojson FROM public.${table} t WHERE t.geom IS NOT NULL ORDER BY ${cols[0]} ASC`;
+    const { rows } = await pool.query(q);
+    return res.json({
+      ok: true,
+      rows,
+      pk1: POLYGON_PK1 || null,
+      pk2: POLYGON_PK2 || null,
+      tableName: POLYGON_TABLE
+    });
+  } catch (e) {
+    console.error('[polygon/grid-data] error:', e.message);
+    return res.status(500).json({ error: 'sunucu_hatasi' });
+  }
+});
 app.post('/api/polygon/find', async (req, res) => {
   if (!POLYGON_TABLE) {
     return res.json({ ok: true, found: false, message: 'no_polygon_configured' });

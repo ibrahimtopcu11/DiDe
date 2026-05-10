@@ -524,6 +524,7 @@
           <button class="tab-btn" data-tab="users-tab" data-i18n="users">Users</button>
           <button class="tab-btn" data-tab="events-tab" data-i18n="events">Events</button>
           <button class="tab-btn" data-tab="veri-tipi-tab">Veri Tipi</button>
+          <button class="tab-btn" data-tab="regions-tab" id="btn-regions-tab" data-i18n="findMyRegion" style="display:none;">Find My Region</button>
         </div>
 
         <div id="types-tab" class="tab-content active">
@@ -680,6 +681,29 @@
 
             <div id="veri-tipi-table-wrap" style="margin-top:10px;"></div>
           </section>
+        </div>
+
+        <!-- Regions Tab (Bölgemi Bul) -->
+        <div id="regions-tab" class="tab-content">
+          <div class="panel">
+            <div class="table-wrap" style="overflow:auto;">
+              <table id="regions-table">
+                <thead>
+                  <tr id="regions-thead-row">
+                    <!-- columns injected by JS based on PK1/PK2 -->
+                  </tr>
+                </thead>
+                <tbody id="region-tbody"></tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <div class="pagination-info" id="regions-pagination-info"></div>
+              <div class="pagination-controls" id="regions-pagination-controls"></div>
+            </div>
+            <div id="regions-map-wrap" class="events-map-wrap" style="margin-top:12px;">
+              <div id="regions-map"></div>
+            </div>
+          </div>
         </div>
       </section>
     </aside>

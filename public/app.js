@@ -2801,6 +2801,15 @@ const tableStates = {
     sortColumn: null,
     sortDirection: 'asc',
     specialFilters: {}
+  },
+  regions: {
+    data: [],
+    filtered: [],
+    filters: {},
+    currentPage: 1,
+    pageSize: 5,
+    sortColumn: null,
+    sortDirection: 'asc'
   }
 };
 function resetAllTableFiltersOnLanguageChange() {
@@ -2815,12 +2824,12 @@ function resetAllTableFiltersOnLanguageChange() {
     state.currentPage = 1;
   });
   qsa('.filter-dropdown.show').forEach(d => d.classList.remove('show'));
-  ['types', 'users', 'events'].forEach(key => {
+  ['types', 'users', 'events', 'regions'].forEach(key => {
     if (tableStates[key]) {
       renderTable(key);
     }
   });
-  ['types', 'users', 'events'].forEach(key => {
+  ['types', 'users', 'events', 'regions'].forEach(key => {
     try {
       attachFilterEvents(key);
     } catch (e) {
@@ -2893,6 +2902,10 @@ function applyFilters(tableKey) {
           if (column === 'video') itemValue = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
           if (column === 'date') itemValue = formatDate(item.created_at || item.eklenme_tarihi);
           break;
+        case 'regions':
+          if (column === 'pk1') itemValue = String(item._pk1Val ?? '');
+          if (column === 'pk2') itemValue = String(item._pk2Val ?? '');
+          break;
       }
       
       if (!selectedValues.includes(itemValue)) return false;
@@ -2901,6 +2914,9 @@ function applyFilters(tableKey) {
   });
   
   state.currentPage = 1; 
+  // Clear row selections when filters change
+  if (tableKey === 'events') __eventsSelectedRows.clear();
+  if (tableKey === 'regions') __regionsSelectedRows.clear();
   renderTable(tableKey);
 }
 
@@ -3008,6 +3024,10 @@ function buildFilterDropdown(tableKey, column, data) {
         if (column === 'photo') value = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? t('available') : t('notAvailable');
         if (column === 'video') value = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
         break;
+      case 'regions':
+        if (column === 'pk1') value = String(item._pk1Val ?? '');
+        if (column === 'pk2') value = String(item._pk2Val ?? '');
+        break;
     }
     
     if (value) uniqueValues.add(value);
@@ -3047,6 +3067,10 @@ function buildFilterDropdown(tableKey, column, data) {
         if (column === 'creator') value = item.created_by_username || '-';
         if (column === 'photo') value = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? t('available') : t('notAvailable');
         if (column === 'video') value = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
+        break;
+      case 'regions':
+        if (column === 'pk1') value = String(item._pk1Val ?? '');
+        if (column === 'pk2') value = String(item._pk2Val ?? '');
         break;
     }
     
@@ -4196,6 +4220,9 @@ function renderTable(tableKey) {
     case 'events':
       renderEventTableRows(pageData);
       break;
+    case 'regions':
+      renderRegionTableRows(pageData);
+      break;
   }
   
   renderPagination(tableKey);
@@ -4216,6 +4243,9 @@ function renderTable(tableKey) {
     ensureEventsMap();
     ensureEventsExportControl();
     syncEventsMapWithFilteredEvents();
+  }
+  if (tableKey === 'regions') {
+    syncRegionsMap();
   }
 }
 
@@ -4301,6 +4331,249 @@ function syncEventsMapWithFilteredEvents(){
     if (group.getLayers().length) eventsMap.fitBounds(group.getBounds().pad(0.15));
     eventsMap.invalidateSize();
   }catch{}
+}
+
+/* ==================== REGIONS TAB (Bölgemi Bul) ==================== */
+let regionsMap = null;
+let regionsPolygonLayer = null;
+let regionsHighlightLayer = null;
+let regionsMarkersLayer = null;
+let __regionsPk1 = null;
+let __regionsPk2 = null;
+let __regionsSelectedRows = new Set();
+let __eventsSelectedRows = new Set();
+
+async function loadRegionData() {
+  try {
+    const r = await fetch('/api/polygon/grid-data', { credentials: FETCH_CREDENTIALS });
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data.ok) return;
+    __regionsPk1 = data.pk1;
+    __regionsPk2 = data.pk2;
+
+    // Show/hide tab based on PK availability
+    const tabBtn = qs('#btn-regions-tab');
+    if (tabBtn) {
+      tabBtn.style.display = (__regionsPk1 || __regionsPk2) ? '' : 'none';
+    }
+
+    if (!__regionsPk1 && !__regionsPk2) return;
+
+    // Build table header dynamically
+    const thead = qs('#regions-thead-row');
+    if (thead) {
+      let headerHtml = '';
+      if (__regionsPk1) {
+        headerHtml += `<th>
+          <span>${__regionsPk1}</span>
+          <span class="filter-icon" data-column="pk1" data-i18n-title="search">▼</span>
+          <div class="filter-dropdown" data-column="pk1"></div>
+        </th>`;
+      }
+      if (__regionsPk2) {
+        headerHtml += `<th>
+          <span>${__regionsPk2}</span>
+          <span class="filter-icon" data-column="pk2" data-i18n-title="search">▼</span>
+          <div class="filter-dropdown" data-column="pk2"></div>
+        </th>`;
+      }
+      thead.innerHTML = headerHtml;
+    }
+
+    // Map data with normalized PK accessors
+    const rows = data.rows.map((row, idx) => ({
+      ...row,
+      _idx: idx,
+      _pk1Val: __regionsPk1 ? row[__regionsPk1] : null,
+      _pk2Val: __regionsPk2 ? row[__regionsPk2] : null
+    }));
+
+    tableStates.regions.data = rows;
+    tableStates.regions.filtered = [...rows];
+    tableStates.regions.currentPage = 1;
+    tableStates.regions.filters = {};
+    renderTable('regions');
+  } catch (e) {
+    console.warn('[regions] load error:', e);
+  }
+}
+
+function renderRegionTableRows(data) {
+  const tb = qs('#region-tbody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  if (!data.length) {
+    const colCount = (__regionsPk1 ? 1 : 0) + (__regionsPk2 ? 1 : 0);
+    tb.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;padding:20px;color:var(--muted);">${t('noRegionData')}</td></tr>`;
+    return;
+  }
+  data.forEach(row => {
+    const tr = document.createElement('tr');
+    const isSelected = __regionsSelectedRows.has(row._idx);
+    if (isSelected) tr.classList.add('table-row-selected');
+    if (__regionsPk1) {
+      const td = document.createElement('td');
+      td.textContent = row._pk1Val ?? '';
+      tr.appendChild(td);
+    }
+    if (__regionsPk2) {
+      const td = document.createElement('td');
+      td.textContent = row._pk2Val ?? '';
+      tr.appendChild(td);
+    }
+    tr.addEventListener('click', () => toggleRegionRowSelection(row, tr));
+    tb.appendChild(tr);
+  });
+}
+
+function toggleRegionRowSelection(row, tr) {
+  if (__regionsSelectedRows.has(row._idx)) {
+    __regionsSelectedRows.delete(row._idx);
+    tr.classList.remove('table-row-selected');
+  } else {
+    __regionsSelectedRows.add(row._idx);
+    tr.classList.add('table-row-selected');
+  }
+  syncRegionsMapWithSelection();
+}
+
+function ensureRegionsMap() {
+  const host = qs('#regions-map');
+  if (!host || regionsMap) return;
+  const lat = Number(APP_CONFIG.mapInitialLat) || 39.87;
+  const lng = Number(APP_CONFIG.mapInitialLng) || 32.75;
+  const zoom = Number(APP_CONFIG.mapInitialZoom) || 13;
+  regionsMap = L.map('regions-map', {
+    center: [lat, lng], zoom, zoomControl: true, attributionControl: false
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '© OpenStreetMap'
+  }).addTo(regionsMap);
+  regionsPolygonLayer = L.featureGroup().addTo(regionsMap);
+  regionsHighlightLayer = L.featureGroup().addTo(regionsMap);
+  regionsMarkersLayer = L.featureGroup().addTo(regionsMap);
+  regionsMap.invalidateSize();
+
+  // Load polygon layer
+  loadRegionsPolygonLayer();
+  ensureLayerDrawer(regionsMap, 'regions-layer-list');
+}
+
+async function loadRegionsPolygonLayer() {
+  if (!regionsMap || !regionsPolygonLayer) return;
+  try {
+    const r = await fetch('/api/polygon-layer');
+    if (!r.ok) return;
+    const geojson = await r.json();
+    regionsPolygonLayer.clearLayers();
+    L.geoJSON(geojson, {
+      style: { color: '#3b82f6', weight: 1, fillOpacity: 0.05, fillColor: '#3b82f6' }
+    }).addTo(regionsPolygonLayer);
+    if (regionsPolygonLayer.getLayers().length) {
+      regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
+    }
+    loadRasterLayers(regionsMap, [], 'regions-layer-list').catch(() => {});
+  } catch (e) {
+    console.warn('[regions] polygon layer error:', e);
+  }
+}
+
+function syncRegionsMap() {
+  ensureRegionsMap();
+  if (!regionsMap) return;
+  setTimeout(() => regionsMap.invalidateSize(), 100);
+
+  // If no selection, show all polygons normally
+  if (__regionsSelectedRows.size === 0) {
+    regionsHighlightLayer?.clearLayers();
+    regionsMarkersLayer?.clearLayers();
+    if (regionsPolygonLayer?.getLayers().length) {
+      regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
+    }
+    return;
+  }
+  syncRegionsMapWithSelection();
+}
+
+function syncRegionsMapWithSelection() {
+  if (!regionsMap || !regionsHighlightLayer) return;
+  regionsHighlightLayer.clearLayers();
+
+  const allData = tableStates.regions.filtered || [];
+  const selectedData = allData.filter(r => __regionsSelectedRows.has(r._idx));
+
+  if (selectedData.length === 0) {
+    if (regionsPolygonLayer?.getLayers().length) {
+      regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
+    }
+    return;
+  }
+
+  selectedData.forEach(row => {
+    if (row.geojson) {
+      L.geoJSON(row.geojson, {
+        style: { color: '#ef4444', weight: 3, fillOpacity: 0.3, fillColor: '#fca5a5' }
+      }).addTo(regionsHighlightLayer);
+    }
+  });
+
+  if (regionsHighlightLayer.getLayers().length) {
+    regionsMap.fitBounds(regionsHighlightLayer.getBounds().pad(0.15));
+  }
+}
+
+/* ==================== EVENTS TABLE ROW CLICK → MAP ZOOM ==================== */
+function setupEventRowClick() {
+  const tb = qs('#event-tbody');
+  if (!tb) return;
+  tb.querySelectorAll('tr').forEach(tr => {
+    const oId = tr.dataset.olayId;
+    if (!oId) return;
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', (e) => {
+      // Don't trigger on button clicks
+      if (e.target.closest('button, a, input, select')) return;
+      toggleEventRowSelection(parseInt(oId), tr);
+    });
+  });
+}
+
+function toggleEventRowSelection(olayId, tr) {
+  if (__eventsSelectedRows.has(olayId)) {
+    __eventsSelectedRows.delete(olayId);
+    tr.classList.remove('table-row-selected');
+  } else {
+    __eventsSelectedRows.add(olayId);
+    tr.classList.add('table-row-selected');
+  }
+  syncEventsMapWithSelection();
+}
+
+function syncEventsMapWithSelection() {
+  if (!eventsMap || !eventsMarkersLayer) return;
+  if (__eventsSelectedRows.size === 0) {
+    // No selection — show all filtered events
+    syncEventsMapWithFilteredEvents();
+    return;
+  }
+
+  const allFiltered = tableStates.events?.filtered || [];
+  const selected = allFiltered.filter(e => __eventsSelectedRows.has(e.olay_id));
+
+  eventsMarkersLayer.clearLayers();
+  const bounds = [];
+  selected.forEach(e => {
+    const lat = parseFloat(e.enlem), lng = parseFloat(e.boylam);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const m = L.marker([lat, lng], { icon: iconForEvent(e) }).addTo(eventsMarkersLayer);
+    m.bindPopup(`<b>${e.olay_turu_adi || '-'}</b><br>${e.aciklama || ''}`);
+    bounds.push([lat, lng]);
+  });
+
+  if (bounds.length) {
+    eventsMap.fitBounds(L.latLngBounds(bounds).pad(0.2));
+  }
 }
 
 /* ==================== TABLE RENDER FUNCTIONS ==================== */
@@ -4574,6 +4847,9 @@ function renderEventTableRows(data) {
     const dateStr = rawDate ? formatDate(rawDate) : '-';
     
     const tr = document.createElement('tr');
+    tr.dataset.olayId = o.olay_id;
+    const isSelected = __eventsSelectedRows.has(o.olay_id);
+    if (isSelected) tr.classList.add('table-row-selected');
     tr.innerHTML = `
       <td>${o.olay_turu_adi ? escapeHtml(o.olay_turu_adi) : '-'}</td>
       <td><div class="td-desc">${o.aciklama ? escapeHtml(o.aciklama) : ''}</div></td>
@@ -4585,6 +4861,9 @@ function renderEventTableRows(data) {
     `;
     tb.appendChild(tr);
   });
+
+  // Setup row click → map zoom
+  setupEventRowClick();
   
   qsa('[data-del-olay]').forEach(b => {
     b.onclick = async () => {
@@ -4713,6 +4992,8 @@ async function refreshAdminEvents(){
   } catch(e) {
     console.error('refreshAdminEvents error:', e);
   }
+  // Also load regions data for Bölgemi Bul tab
+  try { await loadRegionData(); } catch(e) { console.warn('loadRegionData error:', e); }
 }
 
 /* ==================== TAB NAVIGATION ==================== */
@@ -4743,6 +5024,15 @@ function initTabs() {
         } else {
           mapEl.classList.add('hidden');
         }
+      }
+
+      // Invalidate regions map when switching to regions tab
+      if (targetTab === 'regions-tab' && regionsMap) {
+        setTimeout(() => regionsMap.invalidateSize(), 100);
+      }
+      // Invalidate events map when switching to events tab
+      if (targetTab === 'events-tab' && eventsMap) {
+        setTimeout(() => eventsMap.invalidateSize(), 100);
       }
 
       const tableKey = (targetTab || '').replace('-tab', '');

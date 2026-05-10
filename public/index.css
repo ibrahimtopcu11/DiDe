@@ -752,6 +752,46 @@ body.supervisor-mode-form #olay-card{
   }
 }
 
+/* Events & Regions table: scrollable wrapper */
+#events-table-wrap, .events-map-wrap {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Regions map */
+#regions-map {
+  height: clamp(280px, 40vh, 560px);
+  min-height: 240px;
+  width: 100%;
+}
+@media (max-width: 992px) {
+  #regions-map { height: clamp(240px, 35vh, 480px); }
+}
+@media (max-width: 576px) {
+  #regions-map { height: clamp(220px, 32vh, 420px); }
+}
+
+/* Row selection highlight */
+.table-row-selected {
+  background: var(--primary-light, #dbeafe) !important;
+  outline: 2px solid var(--primary, #3b82f6);
+  outline-offset: -2px;
+}
+:root.theme-dark .table-row-selected {
+  background: rgba(59,130,246,.25) !important;
+}
+
+/* Clickable table rows */
+#event-tbody tr,
+#region-tbody tr {
+  cursor: pointer;
+  transition: background .15s;
+}
+#event-tbody tr:hover,
+#region-tbody tr:hover {
+  background: var(--hover, #f1f5f9);
+}
+
 /* ==========
    Harita
    ========== */
