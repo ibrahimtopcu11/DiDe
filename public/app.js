@@ -2908,6 +2908,8 @@ function applyFilters(tableKey) {
         case 'regions':
           if (column === 'pk1') itemValue = String(item._pk1Val ?? '');
           if (column === 'pk2') itemValue = String(item._pk2Val ?? '');
+          if (column === 'regionType') itemValue = item._typeStr || '-';
+          if (column === 'regionCreator') itemValue = item._creatorStr || '-';
           break;
       }
       
@@ -3030,6 +3032,8 @@ function buildFilterDropdown(tableKey, column, data) {
       case 'regions':
         if (column === 'pk1') value = String(item._pk1Val ?? '');
         if (column === 'pk2') value = String(item._pk2Val ?? '');
+        if (column === 'regionType') value = item._typeStr || '-';
+        if (column === 'regionCreator') value = item._creatorStr || '-';
         break;
     }
     
@@ -3074,6 +3078,8 @@ function buildFilterDropdown(tableKey, column, data) {
       case 'regions':
         if (column === 'pk1') value = String(item._pk1Val ?? '');
         if (column === 'pk2') value = String(item._pk2Val ?? '');
+        if (column === 'regionType') value = item._typeStr || '-';
+        if (column === 'regionCreator') value = item._creatorStr || '-';
         break;
     }
     
@@ -4356,7 +4362,6 @@ async function loadRegionData() {
     __regionsPk1 = data.pk1;
     __regionsPk2 = data.pk2;
 
-    // Show/hide tab based on PK availability
     const tabBtn = qs('#btn-regions-tab');
     if (tabBtn) {
       tabBtn.style.display = (__regionsPk1 || __regionsPk2) ? '' : 'none';
@@ -4364,7 +4369,7 @@ async function loadRegionData() {
 
     if (!__regionsPk1 && !__regionsPk2) return;
 
-    // Build table header dynamically
+    // Build table header dynamically with Type + AddedBy columns
     const thead = qs('#regions-thead-row');
     if (thead) {
       let headerHtml = '';
@@ -4382,16 +4387,66 @@ async function loadRegionData() {
           <div class="filter-dropdown" data-column="pk2"></div>
         </th>`;
       }
+      headerHtml += `<th>
+        <span data-i18n="type">${t('type')}</span>
+        <span class="filter-icon" data-column="regionType" data-i18n-title="search">▼</span>
+        <div class="filter-dropdown" data-column="regionType"></div>
+      </th>`;
+      headerHtml += `<th>
+        <span data-i18n="addedBy">${t('addedBy')}</span>
+        <span class="filter-icon" data-column="regionCreator" data-i18n-title="search">▼</span>
+        <div class="filter-dropdown" data-column="regionCreator"></div>
+      </th>`;
       thead.innerHTML = headerHtml;
     }
 
-    // Map data with normalized PK accessors
-    const rows = data.rows.map((row, idx) => ({
-      ...row,
-      _idx: idx,
-      _pk1Val: __regionsPk1 ? row[__regionsPk1] : null,
-      _pk2Val: __regionsPk2 ? row[__regionsPk2] : null
-    }));
+    // Get all events and match to grids using polygon_pk_values
+    const allEvents = tableStates.events?.data || [];
+    // Determine which PK key to use for matching
+    const pkKey = __regionsPk1 || __regionsPk2;
+
+    // Build a map: pkValue → [events]
+    const gridEventsMap = {};
+    allEvents.forEach(evt => {
+      const pkv = evt.polygon_pk_values;
+      if (!pkv || typeof pkv !== 'object') return;
+      const matchVal = pkv[pkKey];
+      if (matchVal == null) return;
+      const key = String(matchVal);
+      if (!gridEventsMap[key]) gridEventsMap[key] = [];
+      gridEventsMap[key].push(evt);
+    });
+
+    // Enrich grid rows with event info
+    const rows = data.rows.map((row, idx) => {
+      const pk1Val = __regionsPk1 ? row[__regionsPk1] : null;
+      const pk2Val = __regionsPk2 ? row[__regionsPk2] : null;
+      const matchKey = String(pk1Val ?? pk2Val ?? '');
+      const events = gridEventsMap[matchKey] || [];
+
+      // Count types
+      const typeCounts = {};
+      const creatorCounts = {};
+      events.forEach(e => {
+        const tName = e.olay_turu_adi || '-';
+        typeCounts[tName] = (typeCounts[tName] || 0) + 1;
+        const cName = e.created_by_username || '-';
+        creatorCounts[cName] = (creatorCounts[cName] || 0) + 1;
+      });
+
+      return {
+        ...row,
+        _idx: idx,
+        _pk1Val: pk1Val,
+        _pk2Val: pk2Val,
+        _events: events,
+        _eventCount: events.length,
+        _typeCounts: typeCounts,
+        _creatorCounts: creatorCounts,
+        _typeStr: Object.entries(typeCounts).map(([k,v]) => `${k}(${v})`).join(', ') || '-',
+        _creatorStr: Object.entries(creatorCounts).map(([k,v]) => `${k}(${v})`).join(', ') || '-'
+      };
+    });
 
     tableStates.regions.data = rows;
     tableStates.regions.filtered = [...rows];
@@ -4408,7 +4463,7 @@ function renderRegionTableRows(data) {
   if (!tb) return;
   tb.innerHTML = '';
   if (!data.length) {
-    const colCount = (__regionsPk1 ? 1 : 0) + (__regionsPk2 ? 1 : 0);
+    const colCount = (__regionsPk1 ? 1 : 0) + (__regionsPk2 ? 1 : 0) + 2;
     tb.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;padding:20px;color:var(--muted);">${t('noRegionData')}</td></tr>`;
     return;
   }
@@ -4426,7 +4481,21 @@ function renderRegionTableRows(data) {
       td.textContent = row._pk2Val ?? '';
       tr.appendChild(td);
     }
-    tr.addEventListener('click', () => toggleRegionRowSelection(row, tr));
+    // Type column
+    const tdType = document.createElement('td');
+    tdType.textContent = row._typeStr || '-';
+    tdType.style.fontSize = '0.85rem';
+    tr.appendChild(tdType);
+    // Added By column
+    const tdCreator = document.createElement('td');
+    tdCreator.textContent = row._creatorStr || '-';
+    tdCreator.style.fontSize = '0.85rem';
+    tr.appendChild(tdCreator);
+
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('button, a, input, select')) return;
+      toggleRegionRowSelection(row, tr);
+    });
     tb.appendChild(tr);
   });
 }
@@ -4462,7 +4531,7 @@ function ensureRegionsMap() {
 
     regionsPolygonLayer = L.featureGroup().addTo(regionsMap);
     regionsHighlightLayer = L.featureGroup().addTo(regionsMap);
-    regionsMarkersLayer = L.featureGroup().addTo(regionsMap);
+    regionsMarkersLayer = makeMarkersLayer().addTo(regionsMap);
     regionsMap.invalidateSize();
 
     // Load ALL layers
@@ -4618,17 +4687,21 @@ function syncRegionsMap() {
 function syncRegionsMapWithSelection() {
   if (!regionsMap || !regionsHighlightLayer) return;
   regionsHighlightLayer.clearLayers();
+  regionsMarkersLayer.clearLayers();
 
   const allData = tableStates.regions.filtered || [];
   const selectedData = allData.filter(r => __regionsSelectedRows.has(r._idx));
 
   if (selectedData.length === 0) {
+    // No row selected — show all events
+    syncRegionsEventMarkers();
     if (regionsPolygonLayer?.getLayers().length) {
       regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
     }
     return;
   }
 
+  // Highlight selected polygons
   selectedData.forEach(row => {
     if (row.geojson) {
       L.geoJSON(row.geojson, {
@@ -4637,8 +4710,23 @@ function syncRegionsMapWithSelection() {
     }
   });
 
+  // Show only events from selected grids
+  const bounds = [];
+  selectedData.forEach(row => {
+    (row._events || []).forEach(e => {
+      const lat = parseFloat(e.enlem), lng = parseFloat(e.boylam);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const m = L.marker([lat, lng], { icon: iconForEvent(e) });
+      m.bindPopup(`<b>${e.olay_turu_adi || '-'}</b><br>${e.aciklama || ''}`);
+      regionsMarkersLayer.addLayer(m);
+      bounds.push([lat, lng]);
+    });
+  });
+
   if (regionsHighlightLayer.getLayers().length) {
     regionsMap.fitBounds(regionsHighlightLayer.getBounds().pad(0.15));
+  } else if (bounds.length) {
+    regionsMap.fitBounds(L.latLngBounds(bounds).pad(0.2));
   }
 }
 

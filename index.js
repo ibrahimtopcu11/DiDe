@@ -2309,6 +2309,7 @@ app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
         o.created_at,
         o.photo_urls,
         o.video_urls,
+        o.polygon_pk_values,
         ((o.created_by_id = $1) OR (o.created_by_name = $2)) AS is_mine
       FROM olay o
       LEFT JOIN olaylar l ON l.o_id = o.olay_turu
@@ -2323,6 +2324,7 @@ app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
       ...row,
       photo_urls: parseJsonText(row.photo_urls),
       video_urls: parseJsonText(row.video_urls),
+      polygon_pk_values: parseJsonText(row.polygon_pk_values) || {},
     }));
 
     if (isAnon) {
