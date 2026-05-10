@@ -1516,12 +1516,12 @@ async function vt_refreshTable(){
   table.innerHTML = `
     <thead>
       <tr>
-        <th>Katman_tablo</th>
-        <th>Attribute_column</th>
-        <th>olay_turu</th>
-        <th>faydali_faydasiz_mi</th>
-        <th>ekleyen</th>
-        <th>işlemler</th>
+        <th data-i18n="vtLayerTable">${t('vtLayerTable')}</th>
+        <th data-i18n="vtAttributeColumn">${t('vtAttributeColumn')}</th>
+        <th data-i18n="vtEventType">${t('vtEventType')}</th>
+        <th data-i18n="good">${t('good')}</th>
+        <th data-i18n="addedBy">${t('addedBy')}</th>
+        <th data-i18n="actions">${t('actions')}</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -1542,11 +1542,11 @@ async function vt_refreshTable(){
       <td>${escapeHtml(rw.katman_tablo || '')}</td>
       <td>${escapeHtml(rw.attribute_column || '')}</td>
       <td>${escapeHtml(rw.olay_turu || '')}</td>
-      <td>${escapeHtml(rw.faydali_faydasiz_mi || '')}</td>
+      <td>${rw.faydali_faydasiz_mi === 'Faydali' || rw.faydali_faydasiz_mi === 'Faydalı' ? t('beneficial') : t('notBeneficial')}</td>
       <td>${escapeHtml(rw.ekleyen || '')}</td>
       <td style="display:flex; gap:8px;">
-        <button class="btn ghost" ${canEdit ? '' : 'disabled'} data-act="upd" data-id="${rw.o_id}">Güncelle</button>
-        <button class="btn danger" ${canEdit ? '' : 'disabled'} data-act="del" data-id="${rw.o_id}">Sil</button>
+        <button class="btn ghost" ${canEdit ? '' : 'disabled'} data-act="upd" data-id="${rw.o_id}">${t('update')}</button>
+        <button class="btn danger" ${canEdit ? '' : 'disabled'} data-act="del" data-id="${rw.o_id}">${t('delete')}</button>
       </td>
     `;
 
@@ -1621,13 +1621,13 @@ function vt_renderStep(){
 
   // STEP 0: tablo seç
   if(__veriTipiState.step === 0){
-    title.textContent = '1) Katman_tablo seç';
-    body.innerHTML = `<div class="muted">Line / Polygon geometry içeren tablolar listelenir.</div><div id="vt-tables"></div>`;
+    title.textContent = '1) ' + t('vtSelectLayerTable');
+    body.innerHTML = `<div class="muted">${t('vtTablesDescription')}</div><div id="vt-tables"></div>`;
     btnBack.disabled = true;
-    btnNext.textContent = 'Next';
+    btnNext.textContent = t('next') || 'Next';
 
     btnNext.onclick = ()=>{
-      if(!__veriTipiState.katman_tablo) return toast('Tablo seç', 'error');
+      if(!__veriTipiState.katman_tablo) return toast(t('vtSelectLayerTable'), 'error');
       __veriTipiState.step = 1;
       vt_renderStep();
     };
@@ -1637,13 +1637,17 @@ function vt_renderStep(){
       const d = r.ok ? await r.json() : { tables:[] };
       const tables = (d.tables||[]).filter(x => x.geomType==='line' || x.geomType==='polygon');
 
+      // Filter out the POLYGON_FILE table
+      const polyTable = (APP_CONFIG.polygonTable || '').toLowerCase();
+      const filteredTables = tables.filter(tbl => tbl.table.toLowerCase() !== polyTable);
+
       const wrap = body.querySelector('#vt-tables');
       wrap.innerHTML = '';
 
       const sel = document.createElement('select');
       sel.style.width = '100%';
-      sel.innerHTML = `<option value="">-- Seç --</option>` +
-        tables.map(t => `<option value="${escapeHtml(t.table)}">${escapeHtml(t.table)} (${escapeHtml(t.geomType)})</option>`).join('');
+      sel.innerHTML = `<option value="">-- ${t('pleaseSelect')} --</option>` +
+        filteredTables.map(t => `<option value="${escapeHtml(t.table)}">${escapeHtml(t.table)} (${escapeHtml(t.geomType)})</option>`).join('');
 
       sel.onchange = ()=>{ __veriTipiState.katman_tablo = sel.value || null; };
       wrap.appendChild(sel);
@@ -1654,28 +1658,28 @@ function vt_renderStep(){
 
   // STEP 1: kolon seç
   if(__veriTipiState.step === 1){
-    title.textContent = '2) Attribute_column seç';
+    title.textContent = '2) ' + t('vtSelectColumn');
     btnBack.disabled = false;
-    btnNext.textContent = 'Next';
+    btnNext.textContent = t('next') || 'Next';
 
     body.innerHTML = `
-      <div class="muted">Seçtiğin tablonun sütunlarından birini seç.</div>
+      <div class="muted">${t('vtColumnDescription')}</div>
       <select id="vt-col" style="width:100%; padding:10px; border:1px solid #e5e7eb; border-radius:10px;">
-        <option value="">-- Yükleniyor... --</option>
+        <option value="">-- ${t('vtLoadingColumns')} --</option>
       </select>
       <div style="margin-top:14px; padding:10px; border:1px solid #e5e7eb; border-radius:10px;">
-        <div class="muted" style="margin-bottom:6px;">Tüm veriyi tek seferde işaretle (opsiyonel):</div>
+        <div class="muted" style="margin-bottom:6px;">${t('vtBulkOption')}:</div>
         <label style="display:flex; gap:8px; align-items:center; margin:4px 0;">
           <input type="radio" name="vt-bulk" value="none" checked />
-          <span>Tek tek seçeceğim (sonraki adıma geç)</span>
+          <span>${t('vtBulkNone')}</span>
         </label>
         <label style="display:flex; gap:8px; align-items:center; margin:4px 0;">
           <input type="radio" name="vt-bulk" value="good" />
-          <span>Bütün veri Faydalı olsun</span>
+          <span>${t('vtBulkPublic')}</span>
         </label>
         <label style="display:flex; gap:8px; align-items:center; margin:4px 0;">
           <input type="radio" name="vt-bulk" value="bad" />
-          <span>Bütün veri Faydasız olsun</span>
+          <span>${t('vtBulkPrivate')}</span>
         </label>
       </div>
     `;
@@ -1684,7 +1688,7 @@ function vt_renderStep(){
       const rr = await fetch(`/api/table-columns/${encodeURIComponent(__veriTipiState.katman_tablo)}`);
       const dd = rr.ok ? await rr.json() : { columns:[] };
       const sel = body.querySelector('#vt-col');
-      sel.innerHTML = `<option value="">-- Sütun Seç --</option>` +
+      sel.innerHTML = `<option value="">-- ${t('vtSelectColumnPlaceholder')} --</option>` +
         (dd.columns||[]).map(c => {
           const selected = c === __veriTipiState.attribute_column ? 'selected' : '';
           return `<option value="${escapeHtml(c)}" ${selected}>${escapeHtml(c)}</option>`;
@@ -1745,14 +1749,14 @@ function vt_renderStep(){
 
   // STEP 2: değer seç
   if(__veriTipiState.step === 2){
-    title.textContent = '3) olay_turu değerlerini seç';
+    title.textContent = '3) ' + t('vtSelectValues');
     btnBack.disabled = false;
-    btnNext.textContent = 'Next';
+    btnNext.textContent = t('next') || 'Next';
 
     body.innerHTML = `
       <label style="display:flex; gap:8px; align-items:center;">
         <input id="vt-all" type="checkbox" ${__veriTipiState.select_all ? 'checked' : ''} />
-        <span>Bu sütundaki değerlerin hepsini seç</span>
+        <span>${t('vtSelectAllValues')}</span>
       </label>
       <div id="vt-values" style="margin-top:10px; max-height:240px; overflow:auto; border:1px solid #e5e7eb; border-radius:10px; padding:10px;"></div>
     `;
@@ -1766,7 +1770,7 @@ function vt_renderStep(){
     };
 
     if(__veriTipiState.select_all){
-      list.innerHTML = `<div class="muted">Hepsi seçili (${__veriTipiState.values.length} değer)</div>`;
+      list.innerHTML = `<div class="muted">${t('vtAllSelected', { count: __veriTipiState.values.length })}</div>`;
       btnNext.onclick = ()=>{
         __veriTipiState.step = 3;
         vt_renderStep();
@@ -1796,7 +1800,7 @@ function vt_renderStep(){
     });
 
     btnNext.onclick = ()=>{
-      if(!(__veriTipiState.selectedValues||[]).length) return toast('En az 1 değer seç', 'error');
+      if(!(__veriTipiState.selectedValues||[]).length) return toast(t('vtMinOneValue'), 'error');
       __veriTipiState.step = 3;
       vt_renderStep();
     };
@@ -1806,23 +1810,22 @@ function vt_renderStep(){
 
   // STEP 3: good/bad + kaydet
   if(__veriTipiState.step === 3){
-    title.textContent = '4) Faydalı / Faydasız seç';
+    title.textContent = '4) ' + t('good');
     btnBack.disabled = false;
-    btnNext.textContent = 'Kaydet';
+    btnNext.textContent = t('save') || 'Save';
 
     body.innerHTML = `
       <label style="display:flex; gap:10px; align-items:center; margin:8px 0;">
         <input type="radio" name="vt-good" value="true" ${__veriTipiState.good ? 'checked' : ''} />
-        <span>Faydalı</span>
+        <span>${t('beneficial')}</span>
       </label>
       <label style="display:flex; gap:10px; align-items:center; margin:8px 0;">
         <input type="radio" name="vt-good" value="false" ${!__veriTipiState.good ? 'checked' : ''} />
-        <span>Faydasız</span>
+        <span>${t('notBeneficial')}</span>
       </label>
 
       <div class="muted" style="margin-top:10px;">
-        Seçilen değerler için hedef tabloya <b>olay_turu</b> kolonu eklenir ve uygun satırlara <b>o_id</b> yazılır.
-        Seçilmemiş satırlar NULL kalır (None) ve haritada görünmez.
+        ${t('vtSaveDescription')}
       </div>
     `;
 
@@ -1845,9 +1848,9 @@ function vt_renderStep(){
         body: JSON.stringify(payload)
       });
 
-      if(!rr.ok) return toast('Kaydedilemedi','error');
+      if(!rr.ok) return toast(t('saveFailed') || 'Save failed','error');
 
-      toast('Kaydedildi');
+      toast(t('savedSuccessfully') || 'Saved');
       vt_closeModal();
       vt_refreshTable();
       loadOlayTypes();
@@ -4338,6 +4341,7 @@ let regionsMap = null;
 let regionsPolygonLayer = null;
 let regionsHighlightLayer = null;
 let regionsMarkersLayer = null;
+let __regionsGeomLayers = [];
 let __regionsPk1 = null;
 let __regionsPk2 = null;
 let __regionsSelectedRows = new Set();
@@ -4440,42 +4444,156 @@ function toggleRegionRowSelection(row, tr) {
 
 function ensureRegionsMap() {
   const host = qs('#regions-map');
-  if (!host || regionsMap) return;
-  const lat = Number(APP_CONFIG.mapInitialLat) || 39.87;
-  const lng = Number(APP_CONFIG.mapInitialLng) || 32.75;
-  const zoom = Number(APP_CONFIG.mapInitialZoom) || 13;
-  regionsMap = L.map('regions-map', {
-    center: [lat, lng], zoom, zoomControl: true, attributionControl: false
-  });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '© OpenStreetMap'
-  }).addTo(regionsMap);
-  regionsPolygonLayer = L.featureGroup().addTo(regionsMap);
-  regionsHighlightLayer = L.featureGroup().addTo(regionsMap);
-  regionsMarkersLayer = L.featureGroup().addTo(regionsMap);
-  regionsMap.invalidateSize();
+  if (!host) return;
 
-  // Load polygon layer
-  loadRegionsPolygonLayer();
-  ensureLayerDrawer(regionsMap, 'regions-layer-list');
+  if (!regionsMap) {
+    const lat = Number(APP_CONFIG.mapInitialLat) || 39.87;
+    const lng = Number(APP_CONFIG.mapInitialLng) || 32.75;
+    const zoom = Number(APP_CONFIG.mapInitialZoom) || 13;
+    const minZoom = Number(APP_CONFIG.mapMinZoom) || 3;
+
+    regionsMap = L.map('regions-map', {
+      zoomControl: true, attributionControl: false, minZoom, maxZoom: 18
+    }).setView([lat, lng], zoom);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(regionsMap);
+
+    regionsPolygonLayer = L.featureGroup().addTo(regionsMap);
+    regionsHighlightLayer = L.featureGroup().addTo(regionsMap);
+    regionsMarkersLayer = L.featureGroup().addTo(regionsMap);
+    regionsMap.invalidateSize();
+
+    // Load ALL layers
+    loadAllRegionsLayers();
+  } else {
+    regionsMap.invalidateSize();
+  }
+  ensureMapLegend(regionsMap);
 }
 
-async function loadRegionsPolygonLayer() {
+async function loadAllRegionsLayers() {
+  if (!regionsMap) return;
+
+  // 1. Load geometry layers (line + polygon tables from DB)
+  await loadGeomLayersForRegionsMap();
+
+  // 2. Load POLYGON_FILE layer
+  await loadRegionsPolygonFileLayer();
+
+  // 3. Load raster layers
+  try {
+    await loadRasterLayers(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+  } catch (e) { console.warn('[regions] raster error:', e); }
+
+  // 4. Load event markers
+  syncRegionsEventMarkers();
+}
+
+async function loadGeomLayersForRegionsMap() {
+  if (!regionsMap) return;
+
+  __regionsGeomLayers.forEach(x => {
+    try { regionsMap.removeLayer(x.layer); } catch {}
+  });
+  __regionsGeomLayers = [];
+
+  try {
+    const r = await fetch('/api/geom-tables');
+    if (!r.ok) {
+      ensureLayerDrawer(regionsMap, 'regions-layer-list');
+      renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+      return;
+    }
+    const data = await r.json();
+    const tables = (data.tables || []).filter(x => x.geomType === 'line' || x.geomType === 'polygon');
+
+    for (const tbl of tables) {
+      const gr = await fetch(`/api/geo/${encodeURIComponent(tbl.table)}`);
+      if (!gr.ok) continue;
+      const fc = await gr.json();
+      if (!fc.features || fc.features.length === 0) continue;
+
+      const layer = L.geoJSON(fc, {
+        style: () => ({ weight: 4, opacity: 0.85 })
+      });
+      layer.addTo(regionsMap);
+
+      __regionsGeomLayers.push({
+        table: tbl.table,
+        geomType: tbl.geomType,
+        layer,
+        visible: true,
+        z: 0
+      });
+    }
+  } catch (e) {
+    console.warn('[regions] geom layers error:', e);
+  }
+
+  ensureLayerDrawer(regionsMap, 'regions-layer-list');
+  renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+}
+
+async function loadRegionsPolygonFileLayer() {
   if (!regionsMap || !regionsPolygonLayer) return;
   try {
     const r = await fetch('/api/polygon-layer');
     if (!r.ok) return;
     const geojson = await r.json();
+    if (!geojson.features || geojson.features.length === 0) return;
+
     regionsPolygonLayer.clearLayers();
     L.geoJSON(geojson, {
       style: { color: '#3b82f6', weight: 1, fillOpacity: 0.05, fillColor: '#3b82f6' }
     }).addTo(regionsPolygonLayer);
+
+    // Add to layer drawer
+    const polyName = APP_CONFIG.polygonTable || 'polygon';
+    __regionsGeomLayers.push({
+      table: polyName,
+      geomType: 'polygon',
+      layer: regionsPolygonLayer,
+      visible: true,
+      z: 0
+    });
+
+    ensureLayerDrawer(regionsMap, 'regions-layer-list');
+    renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+
     if (regionsPolygonLayer.getLayers().length) {
       regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
     }
-    loadRasterLayers(regionsMap, [], 'regions-layer-list').catch(() => {});
   } catch (e) {
-    console.warn('[regions] polygon layer error:', e);
+    console.warn('[regions] polygon file layer error:', e);
+  }
+}
+
+function syncRegionsEventMarkers() {
+  if (!regionsMap || !regionsMarkersLayer) return;
+  regionsMarkersLayer.clearLayers();
+
+  const allEvents = tableStates.events?.data || [];
+  allEvents.forEach(e => {
+    const lat = parseFloat(e.enlem), lng = parseFloat(e.boylam);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    const m = L.marker([lat, lng], { icon: iconForEvent(e) }).addTo(regionsMarkersLayer);
+    m.bindPopup(`<b>${e.olay_turu_adi || '-'}</b><br>${e.aciklama || ''}`);
+  });
+
+  // Add markers to layer drawer
+  const hasMarkers = __regionsGeomLayers.some(x => x.table === '__events_markers');
+  if (!hasMarkers && regionsMarkersLayer.getLayers().length > 0) {
+    __regionsGeomLayers.push({
+      table: '__events_markers',
+      geomType: 'point',
+      layer: regionsMarkersLayer,
+      visible: true,
+      z: 10
+    });
+    ensureLayerDrawer(regionsMap, 'regions-layer-list');
+    renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
   }
 }
 
@@ -4484,10 +4602,11 @@ function syncRegionsMap() {
   if (!regionsMap) return;
   setTimeout(() => regionsMap.invalidateSize(), 100);
 
-  // If no selection, show all polygons normally
+  // Refresh event markers
+  syncRegionsEventMarkers();
+
   if (__regionsSelectedRows.size === 0) {
     regionsHighlightLayer?.clearLayers();
-    regionsMarkersLayer?.clearLayers();
     if (regionsPolygonLayer?.getLayers().length) {
       regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
     }
