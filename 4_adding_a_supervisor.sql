@@ -17,7 +17,7 @@ INSERT INTO public.users (
     two_factor_secret,
     two_factor_enabled
 ) VALUES (
-    'HU_supervizör',
+    'HU_supervisor',
     crypt('12345Aa.', gen_salt('bf', 10)),
     'supervisor',
     'Berk',
@@ -46,12 +46,12 @@ INSERT INTO public.users (
     two_factor_secret,
     two_factor_enabled
 ) VALUES (
-    'afad_supervizör',
+    'afad_supervisor',
     crypt('123456Aa.', gen_salt('bf', 10)),
     'supervisor',
     'İbrahim',
     'Topcu',
-    'ibrahim_supervizor@afad.gov.tr',
+    'ibrahim_supervisor@afad.gov.tr',
      TRUE,
      TRUE,
      TRUE,
