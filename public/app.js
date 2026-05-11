@@ -416,13 +416,13 @@ function ensureLayerDrawer(mapInstance, listId){
   // panel
   const panel = document.createElement('div');
   panel.className = 'layer-panel hidden';
-  // Force max-height with important to override any CSS
-  panel.style.setProperty('max-height', '320px', 'important');
-  panel.style.setProperty('overflow-y', 'auto', 'important');
+  panel.style.setProperty('overflow-y', 'scroll', 'important');
+  panel.style.setProperty('overflow-x', 'hidden', 'important');
+
   // Prevent wheel from zooming the map while scrolling the panel
   panel.addEventListener('wheel', (e) => {
     e.stopPropagation();
-  }, { passive: false });
+  }, { passive: true });
 
   panel.innerHTML = `
     <div class="layer-panel-header">
@@ -437,6 +437,14 @@ function ensureLayerDrawer(mapInstance, listId){
   drawer.appendChild(notch);
   drawer.appendChild(panel);
   c.appendChild(drawer);
+
+  // Set max-height AFTER DOM insertion (needs actual computed position)
+  requestAnimationFrame(() => {
+    const cH = c.clientHeight || 400;
+    const dTop = drawer.offsetTop || 120;
+    const mxH = Math.max(150, cH - dTop - 20);
+    panel.style.setProperty('max-height', mxH + 'px', 'important');
+  });
 }
 
 function geomTypeIcon(type){
@@ -460,12 +468,12 @@ function renderLayerList(mapInstance, layers, listId){
   const list = mapInstance.getContainer().querySelector('#' + listId);
   if(!list) return;
   list.innerHTML = '';
-  // Force scroll on the list container with !important to win over any CSS
-  list.style.setProperty('max-height', '240px', 'important');
-  list.style.setProperty('overflow-y', 'auto', 'important');
-  list.style.scrollbarWidth = 'thin';
-  // Prevent map zoom when scrolling inside list
-  list.addEventListener('wheel', (e) => e.stopPropagation(), { passive: false });
+
+  // Add wheel handler only once
+  if (!list.__wheelHandled) {
+    list.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+    list.__wheelHandled = true;
+  }
 
   layers.forEach((it, idx)=>{
     const wrap = document.createElement('div');
@@ -4568,28 +4576,32 @@ function ensureRegionsMap() {
 }
 
 let __regionsLayersLoaded = false;
+let __regionsLayersLoading = false;
 async function loadAllRegionsLayers() {
-  if (!regionsMap) return;
-
-  await loadGeomLayersForRegionsMap();
-  await loadRegionsPolygonFileLayer();
-  syncRegionsEventMarkers();
-
+  if (!regionsMap || __regionsLayersLoading) return;
+  __regionsLayersLoading = true;
   try {
-    await loadRasterLayers(regionsMap, __regionsGeomLayers, 'regions-layer-list');
-  } catch (e) { console.warn('[regions] raster error:', e); }
+    await loadGeomLayersForRegionsMap();
+    await loadRegionsPolygonFileLayer();
+    syncRegionsEventMarkers();
 
-  ensureLayerDrawer(regionsMap, 'regions-layer-list');
-  renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+    try {
+      await loadRasterLayers(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+    } catch (e) { console.warn('[regions] raster error:', e); }
 
-  __regionsLayersLoaded = true;
-  // After all layers loaded, highlight+zoom to current 5 grids
-  setTimeout(() => {
-    if (regionsMap) {
-      regionsMap.invalidateSize();
-      syncRegionsMapHighlightPage();
-    }
-  }, 300);
+    ensureLayerDrawer(regionsMap, 'regions-layer-list');
+    renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+
+    __regionsLayersLoaded = true;
+    setTimeout(() => {
+      if (regionsMap) {
+        regionsMap.invalidateSize();
+        syncRegionsMapHighlightPage();
+      }
+    }, 300);
+  } finally {
+    __regionsLayersLoading = false;
+  }
 }
 
 async function loadGeomLayersForRegionsMap() {
@@ -5293,6 +5305,8 @@ function initTabs() {
             if (!__regionsLayersLoaded) {
               loadAllRegionsLayers();
             } else {
+              // Refresh markers (they may not render while tab was hidden)
+              syncRegionsEventMarkers();
               syncRegionsMapHighlightPage();
             }
           }
