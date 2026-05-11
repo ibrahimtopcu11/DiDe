@@ -2908,8 +2908,6 @@ function applyFilters(tableKey) {
         case 'regions':
           if (column === 'pk1') itemValue = String(item._pk1Val ?? '');
           if (column === 'pk2') itemValue = String(item._pk2Val ?? '');
-          if (column === 'regionType') itemValue = item._typeStr || '-';
-          if (column === 'regionCreator') itemValue = item._creatorStr || '-';
           break;
       }
       
@@ -3032,8 +3030,6 @@ function buildFilterDropdown(tableKey, column, data) {
       case 'regions':
         if (column === 'pk1') value = String(item._pk1Val ?? '');
         if (column === 'pk2') value = String(item._pk2Val ?? '');
-        if (column === 'regionType') value = item._typeStr || '-';
-        if (column === 'regionCreator') value = item._creatorStr || '-';
         break;
     }
     
@@ -3078,8 +3074,6 @@ function buildFilterDropdown(tableKey, column, data) {
       case 'regions':
         if (column === 'pk1') value = String(item._pk1Val ?? '');
         if (column === 'pk2') value = String(item._pk2Val ?? '');
-        if (column === 'regionType') value = item._typeStr || '-';
-        if (column === 'regionCreator') value = item._creatorStr || '-';
         break;
     }
     
@@ -3130,10 +3124,23 @@ function buildFilterDropdown(tableKey, column, data) {
           if (column === 'photo') itemValue = (Array.isArray(item.photo_urls) && item.photo_urls.length > 0) ? t('available') : t('notAvailable');
           if (column === 'video') itemValue = (Array.isArray(item.video_urls) && item.video_urls.length > 0) ? t('available') : t('notAvailable');
           break;
+        case 'regions':
+          if (column === 'pk1') itemValue = String(item._pk1Val ?? '');
+          if (column === 'pk2') itemValue = String(item._pk2Val ?? '');
+          break;
       }
       
       if (itemValue === value) filteredCount++;
     });
+    
+    // For regions: override count with event count per grid
+    if (tableKey === 'regions' && (column === 'pk1' || column === 'pk2')) {
+      const matchRow = state.data.find(r => {
+        const v = column === 'pk1' ? String(r._pk1Val ?? '') : String(r._pk2Val ?? '');
+        return v === value;
+      });
+      if (matchRow) filteredCount = matchRow._eventCount || 0;
+    }
     
     let checked = false;
     if (!state.filters[column] || !Array.isArray(state.filters[column])) {
@@ -4369,7 +4376,7 @@ async function loadRegionData() {
 
     if (!__regionsPk1 && !__regionsPk2) return;
 
-    // Build table header dynamically with Type + AddedBy columns
+    // Build table header dynamically — only PK columns
     const thead = qs('#regions-thead-row');
     if (thead) {
       let headerHtml = '';
@@ -4387,16 +4394,6 @@ async function loadRegionData() {
           <div class="filter-dropdown" data-column="pk2"></div>
         </th>`;
       }
-      headerHtml += `<th>
-        <span data-i18n="type">${t('type')}</span>
-        <span class="filter-icon" data-column="regionType" data-i18n-title="search">▼</span>
-        <div class="filter-dropdown" data-column="regionType"></div>
-      </th>`;
-      headerHtml += `<th>
-        <span data-i18n="addedBy">${t('addedBy')}</span>
-        <span class="filter-icon" data-column="regionCreator" data-i18n-title="search">▼</span>
-        <div class="filter-dropdown" data-column="regionCreator"></div>
-      </th>`;
       thead.innerHTML = headerHtml;
     }
 
@@ -4463,8 +4460,8 @@ function renderRegionTableRows(data) {
   if (!tb) return;
   tb.innerHTML = '';
   if (!data.length) {
-    const colCount = (__regionsPk1 ? 1 : 0) + (__regionsPk2 ? 1 : 0) + 2;
-    tb.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;padding:20px;color:var(--muted);">${t('noRegionData')}</td></tr>`;
+    const colCount = (__regionsPk1 ? 1 : 0) + (__regionsPk2 ? 1 : 0);
+    tb.innerHTML = `<tr><td colspan="${colCount || 1}" style="text-align:center;padding:20px;color:var(--muted);">${t('noRegionData')}</td></tr>`;
     return;
   }
   data.forEach(row => {
@@ -4481,17 +4478,6 @@ function renderRegionTableRows(data) {
       td.textContent = row._pk2Val ?? '';
       tr.appendChild(td);
     }
-    // Type column
-    const tdType = document.createElement('td');
-    tdType.textContent = row._typeStr || '-';
-    tdType.style.fontSize = '0.85rem';
-    tr.appendChild(tdType);
-    // Added By column
-    const tdCreator = document.createElement('td');
-    tdCreator.textContent = row._creatorStr || '-';
-    tdCreator.style.fontSize = '0.85rem';
-    tr.appendChild(tdCreator);
-
     tr.addEventListener('click', (e) => {
       if (e.target.closest('button, a, input, select')) return;
       toggleRegionRowSelection(row, tr);
@@ -5235,7 +5221,13 @@ function initTabs() {
 
       // Invalidate regions map when switching to regions tab
       if (targetTab === 'regions-tab' && regionsMap) {
-        setTimeout(() => regionsMap.invalidateSize(), 100);
+        setTimeout(() => {
+          regionsMap.invalidateSize();
+          // Reload layers if none loaded yet
+          if (__regionsGeomLayers.length === 0) {
+            loadAllRegionsLayers();
+          }
+        }, 150);
       }
       // Invalidate events map when switching to events tab
       if (targetTab === 'events-tab' && eventsMap) {

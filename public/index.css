@@ -2630,7 +2630,13 @@ th:has(#btn-add-type){
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
+.layer-panel-list::-webkit-scrollbar { width: 4px; }
+.layer-panel-list::-webkit-scrollbar-thumb { background: var(--muted, #aaa); border-radius: 4px; }
 
 /* Small phones */
 @media (max-width: 400px) {
