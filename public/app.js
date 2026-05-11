@@ -1531,7 +1531,8 @@ async function vt_refreshTable(){
   }
 
   const data = await r.json();
-  const rows = data.rows || [];
+  // Only show non-point (geometry) data in Existing Data tab
+  const rows = (data.rows || []).filter(rw => rw.is_point === false);
 
   const table = document.createElement('table');
   table.className = 'table';
@@ -5187,8 +5188,10 @@ async function loadOlayTypes() {
       sel.style.display = 'block';
       sel.style.maxHeight = 'none';
     }
-    tableStates.types.data = list;
-    tableStates.types.filtered = [...list];
+    // Only show point event types in the admin Event Types tab
+    const pointTypes = list.filter(o => o.is_point !== false);
+    tableStates.types.data = pointTypes;
+    tableStates.types.filtered = [...pointTypes];
     tableStates.types.currentPage = 1;
 
     renderTable('types');
