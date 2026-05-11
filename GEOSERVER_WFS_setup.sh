@@ -593,10 +593,33 @@ for spec in "${EVENT_ICON_SPECS[@]}"; do
   psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
     "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${view_name} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true AND olay_turu=${OID};"
 
-  # Create SLD style with icon
+  # ── Copy SVG icon to GeoServer styles directory ──
   STYLE_NAME="style_olay_type_${OID}"
-  ICON_URL_PATH="/${ICON_FILE}"
+  ENV_DIR="$(dirname "$ENV_FILE")"
+  SVG_SOURCE=""
 
+  # Search for the SVG in multiple locations
+  for candidate in \
+    "${ENV_DIR}/public/${ICON_FILE}" \
+    "${ENV_DIR}/${ICON_FILE}" \
+    "/var/www/dide/DiDe/public/${ICON_FILE}" \
+    "/var/www/dide/DiDe/${ICON_FILE}"; do
+    if [[ -f "$candidate" ]]; then
+      SVG_SOURCE="$candidate"
+      break
+    fi
+  done
+
+  if [[ -n "$SVG_SOURCE" ]]; then
+    log "Copying ${ICON_FILE} → ${GEOSERVER_DATA_DIR}/styles/"
+    cp "$SVG_SOURCE" "${GEOSERVER_DATA_DIR}/styles/${ICON_FILE}"
+    chown geoserver:geoserver "${GEOSERVER_DATA_DIR}/styles/${ICON_FILE}"
+    chmod 644 "${GEOSERVER_DATA_DIR}/styles/${ICON_FILE}"
+  else
+    echo "WARNING: SVG file not found: ${ICON_FILE} — layer will have no icon" >&2
+  fi
+
+  # ── Create SLD style referencing the SVG (filename only — GeoServer resolves from styles dir) ──
   cat >/tmp/gs_sld_${OID}.xml <<SLDEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <StyledLayerDescriptor version="1.0.0"
@@ -614,7 +637,7 @@ for spec in "${EVENT_ICON_SPECS[@]}"; do
           <PointSymbolizer>
             <Graphic>
               <ExternalGraphic>
-                <OnlineResource xlink:href="${ICON_URL_PATH}"/>
+                <OnlineResource xlink:href="${ICON_FILE}"/>
                 <Format>image/svg+xml</Format>
               </ExternalGraphic>
               <Size>24</Size>
@@ -627,15 +650,19 @@ for spec in "${EVENT_ICON_SPECS[@]}"; do
 </StyledLayerDescriptor>
 SLDEOF
 
-  # Upload SLD style
-  curl -sS -u "$GS_AUTH" -XPOST \
+  # ── Upload SLD style (create or update) ──
+  sld_code="$(curl -sS -o /dev/null -w "%{http_code}" -u "$GS_AUTH" -XPOST \
     -H "Content-Type: application/vnd.ogc.sld+xml" \
     -d @"/tmp/gs_sld_${OID}.xml" \
-    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles?name=${STYLE_NAME}" >/dev/null 2>&1 || \
-  curl -sS -u "$GS_AUTH" -XPUT \
-    -H "Content-Type: application/vnd.ogc.sld+xml" \
-    -d @"/tmp/gs_sld_${OID}.xml" \
-    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles/${STYLE_NAME}" >/dev/null 2>&1 || true
+    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles?name=${STYLE_NAME}" 2>/dev/null || true)"
+
+  if [[ "$sld_code" != "201" ]]; then
+    curl -sS -u "$GS_AUTH" -XPUT \
+      -H "Content-Type: application/vnd.ogc.sld+xml" \
+      -d @"/tmp/gs_sld_${OID}.xml" \
+      "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles/${STYLE_NAME}" >/dev/null 2>&1 || true
+  fi
+  log "SLD style '${STYLE_NAME}' uploaded"
 
   # Publish feature type
   cat >/tmp/gs_featuretype.xml <<EOF
