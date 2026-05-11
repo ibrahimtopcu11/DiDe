@@ -4270,7 +4270,24 @@ function syncEventsMapWithFilteredEvents(){
   
   if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'supervisor')) return;
   
-  const list = tableStates?.events?.filtered || [];
+  // If rows are selected, let syncEventsMapWithSelection handle it
+  if (__eventsSelectedRows.size > 0) return;
+
+  const state = tableStates.events;
+  const hasFilter = state?.filters && Object.keys(state.filters).length > 0;
+  const hasSpecialFilter = state?.specialFilters && Object.keys(state.specialFilters).length > 0;
+
+  let list;
+  if (hasFilter || hasSpecialFilter) {
+    // Show ALL filtered events
+    list = state?.filtered || [];
+  } else {
+    // Show only current page events
+    const page = state?.currentPage || 1;
+    const ps = state?.pageSize || 10;
+    const start = (page - 1) * ps;
+    list = (state?.filtered || []).slice(start, start + ps);
+  }
 
   try { eventsMarkersLayer.clearLayers(); } catch {}
   list.forEach(e=>{
@@ -4537,18 +4554,23 @@ async function loadAllRegionsLayers() {
   // 2. Load POLYGON_FILE layer
   await loadRegionsPolygonFileLayer();
 
-  // 3. Load raster layers
+  // 3. Load event markers
+  syncRegionsEventMarkers();
+
+  // 4. Load raster layers
   try {
     await loadRasterLayers(regionsMap, __regionsGeomLayers, 'regions-layer-list');
   } catch (e) { console.warn('[regions] raster error:', e); }
 
-  // 4. Load event markers
-  syncRegionsEventMarkers();
+  // 5. Render layer list ONCE with all layers
+  ensureLayerDrawer(regionsMap, 'regions-layer-list');
+  renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
 }
 
 async function loadGeomLayersForRegionsMap() {
   if (!regionsMap) return;
 
+  // Remove ALL existing layers from map and clear array
   __regionsGeomLayers.forEach(x => {
     try { regionsMap.removeLayer(x.layer); } catch {}
   });
@@ -4556,13 +4578,13 @@ async function loadGeomLayersForRegionsMap() {
 
   try {
     const r = await fetch('/api/geom-tables');
-    if (!r.ok) {
-      ensureLayerDrawer(regionsMap, 'regions-layer-list');
-      renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
-      return;
-    }
+    if (!r.ok) return;
     const data = await r.json();
-    const tables = (data.tables || []).filter(x => x.geomType === 'line' || x.geomType === 'polygon');
+    const polyTable = (APP_CONFIG.polygonTable || '').toLowerCase();
+    // Filter out the POLYGON_FILE table to avoid duplicates
+    const tables = (data.tables || [])
+      .filter(x => x.geomType === 'line' || x.geomType === 'polygon')
+      .filter(x => x.table.toLowerCase() !== polyTable);
 
     for (const tbl of tables) {
       const gr = await fetch(`/api/geo/${encodeURIComponent(tbl.table)}`);
@@ -4586,9 +4608,7 @@ async function loadGeomLayersForRegionsMap() {
   } catch (e) {
     console.warn('[regions] geom layers error:', e);
   }
-
-  ensureLayerDrawer(regionsMap, 'regions-layer-list');
-  renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+  // Don't render list yet — wait for loadAllRegionsLayers to finish
 }
 
 async function loadRegionsPolygonFileLayer() {
@@ -4604,18 +4624,17 @@ async function loadRegionsPolygonFileLayer() {
       style: { color: '#3b82f6', weight: 1, fillOpacity: 0.05, fillColor: '#3b82f6' }
     }).addTo(regionsPolygonLayer);
 
-    // Add to layer drawer
-    const polyName = APP_CONFIG.polygonTable || 'polygon';
-    __regionsGeomLayers.push({
-      table: polyName,
-      geomType: 'polygon',
-      layer: regionsPolygonLayer,
-      visible: true,
-      z: 0
-    });
-
-    ensureLayerDrawer(regionsMap, 'regions-layer-list');
-    renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+    // Add to layer list (check duplicate)
+    const polyName = APP_CONFIG.polygonTable || '__polygon_env';
+    if (!__regionsGeomLayers.some(x => x.table === polyName)) {
+      __regionsGeomLayers.push({
+        table: polyName,
+        geomType: 'polygon',
+        layer: regionsPolygonLayer,
+        visible: true,
+        z: 0
+      });
+    }
 
     if (regionsPolygonLayer.getLayers().length) {
       regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
@@ -4633,13 +4652,13 @@ function syncRegionsEventMarkers() {
   allEvents.forEach(e => {
     const lat = parseFloat(e.enlem), lng = parseFloat(e.boylam);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-    const m = L.marker([lat, lng], { icon: iconForEvent(e) }).addTo(regionsMarkersLayer);
+    const m = L.marker([lat, lng], { icon: iconForEvent(e) });
     m.bindPopup(`<b>${e.olay_turu_adi || '-'}</b><br>${e.aciklama || ''}`);
+    regionsMarkersLayer.addLayer(m);
   });
 
-  // Add markers to layer drawer
-  const hasMarkers = __regionsGeomLayers.some(x => x.table === '__events_markers');
-  if (!hasMarkers && regionsMarkersLayer.getLayers().length > 0) {
+  // Add markers to layer list (check duplicate)
+  if (!__regionsGeomLayers.some(x => x.table === '__events_markers')) {
     __regionsGeomLayers.push({
       table: '__events_markers',
       geomType: 'point',
@@ -4647,8 +4666,6 @@ function syncRegionsEventMarkers() {
       visible: true,
       z: 10
     });
-    ensureLayerDrawer(regionsMap, 'regions-layer-list');
-    renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
   }
 }
 
@@ -4657,17 +4674,61 @@ function syncRegionsMap() {
   if (!regionsMap) return;
   setTimeout(() => regionsMap.invalidateSize(), 100);
 
-  // Refresh event markers
-  syncRegionsEventMarkers();
-
   if (__regionsSelectedRows.size === 0) {
     regionsHighlightLayer?.clearLayers();
-    if (regionsPolygonLayer?.getLayers().length) {
-      regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
-    }
+    // Show current page events on map
+    syncRegionsMapWithCurrentPage();
     return;
   }
   syncRegionsMapWithSelection();
+}
+
+function syncRegionsMapWithCurrentPage() {
+  if (!regionsMap || !regionsMarkersLayer) return;
+  regionsMarkersLayer.clearLayers();
+  regionsHighlightLayer?.clearLayers();
+
+  const state = tableStates.regions;
+  const hasFilter = state.filters && Object.keys(state.filters).length > 0;
+
+  let visibleRows;
+  if (hasFilter) {
+    // Show ALL filtered data
+    visibleRows = state.filtered || [];
+  } else {
+    // Show only current page's 5 rows
+    const page = state.currentPage || 1;
+    const ps = state.pageSize || 5;
+    const start = (page - 1) * ps;
+    visibleRows = (state.filtered || []).slice(start, start + ps);
+  }
+
+  const bounds = [];
+
+  // Highlight grids
+  visibleRows.forEach(row => {
+    if (row.geojson) {
+      L.geoJSON(row.geojson, {
+        style: { color: '#3b82f6', weight: 2, fillOpacity: 0.15, fillColor: '#93c5fd' }
+      }).addTo(regionsHighlightLayer);
+    }
+    // Show events in these grids
+    (row._events || []).forEach(e => {
+      const lat = parseFloat(e.enlem), lng = parseFloat(e.boylam);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const m = L.marker([lat, lng], { icon: iconForEvent(e) });
+      m.bindPopup(`<b>${e.olay_turu_adi || '-'}</b><br>${e.aciklama || ''}`);
+      regionsMarkersLayer.addLayer(m);
+      bounds.push([lat, lng]);
+    });
+  });
+
+  // Zoom to visible data
+  if (regionsHighlightLayer.getLayers().length) {
+    regionsMap.fitBounds(regionsHighlightLayer.getBounds().pad(0.1));
+  } else if (bounds.length) {
+    regionsMap.fitBounds(L.latLngBounds(bounds).pad(0.2));
+  }
 }
 
 function syncRegionsMapWithSelection() {

@@ -2324,7 +2324,7 @@ app.get('/api/olaylar_tum', tryAuth, async (req, res) => {
       ...row,
       photo_urls: parseJsonText(row.photo_urls),
       video_urls: parseJsonText(row.video_urls),
-      polygon_pk_values: parseJsonText(row.polygon_pk_values) || {},
+      polygon_pk_values: (() => { try { const p = JSON.parse(String(row.polygon_pk_values || '{}')); return (typeof p === 'object' && !Array.isArray(p)) ? p : {}; } catch { return {}; } })(),
     }));
 
     if (isAnon) {
