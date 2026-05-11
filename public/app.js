@@ -403,7 +403,6 @@ function ensureLayerDrawer(mapInstance, listId){
 
   // Prevent clicks/touches from reaching the map
   L.DomEvent.disableClickPropagation(drawer);
-  L.DomEvent.disableScrollPropagation(drawer);
   drawer.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
   drawer.addEventListener('touchend', (e) => e.stopPropagation(), { passive: true });
   drawer.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -419,6 +418,10 @@ function ensureLayerDrawer(mapInstance, listId){
   panel.className = 'layer-panel hidden';
   panel.style.maxHeight = '300px';
   panel.style.overflowY = 'auto';
+  // Prevent wheel from zooming the map while scrolling the panel
+  panel.addEventListener('wheel', (e) => {
+    e.stopPropagation();
+  }, { passive: false });
 
   panel.innerHTML = `
     <div class="layer-panel-header">
@@ -456,6 +459,12 @@ function renderLayerList(mapInstance, layers, listId){
   const list = mapInstance.getContainer().querySelector('#' + listId);
   if(!list) return;
   list.innerHTML = '';
+  // Force scroll on the list container
+  list.style.maxHeight = '250px';
+  list.style.overflowY = 'auto';
+  list.style.scrollbarWidth = 'thin';
+  // Prevent map zoom when scrolling inside list
+  list.addEventListener('wheel', (e) => e.stopPropagation(), { passive: false });
 
   layers.forEach((it, idx)=>{
     const wrap = document.createElement('div');
