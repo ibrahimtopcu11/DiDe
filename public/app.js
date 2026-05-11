@@ -604,48 +604,52 @@ async function loadGeomLayersForMap(isPublic){
   renderLayerList(map);
 }
 
+let __eventsLayersLoading = false;
 async function loadGeomLayersForEventsMap(){
-  if(!eventsMap) return;
+  if(!eventsMap || __eventsLayersLoading) return;
+  __eventsLayersLoading = true;
+  try {
+    __eventsGeomLayers.forEach(x => {
+      try { eventsMap.removeLayer(x.layer); } catch {}
+    });
+    __eventsGeomLayers = [];
 
-  __eventsGeomLayers.forEach(x => {
-    try { eventsMap.removeLayer(x.layer); } catch {}
-  });
-  __eventsGeomLayers = [];
+    const r = await fetch('/api/geom-tables');
+    if(!r.ok){
+      ensureLayerDrawer(eventsMap, 'events-layer-list');
+      renderLayerList(eventsMap, __eventsGeomLayers, 'events-layer-list');
+      return;
+    }
 
-  const r = await fetch('/api/geom-tables');
-  if(!r.ok){
+    const data = await r.json();
+    const tables = (data.tables || []).filter(x => x.geomType === 'line' || x.geomType === 'polygon');
+
+    for(const t of tables){
+      if (__eventsGeomLayers.some(x => x.table === t.table)) continue;
+      const gr = await fetch(`/api/geo/${encodeURIComponent(t.table)}`);
+      if(!gr.ok) continue;
+      const fc = await gr.json();
+      if(!fc.features || fc.features.length === 0) continue;
+
+      const layer = L.geoJSON(fc, {
+        style: ()=>({ weight: 4, opacity: 0.85 })
+      });
+      layer.addTo(eventsMap);
+
+      __eventsGeomLayers.push({
+        table: t.table,
+        geomType: t.geomType,
+        layer,
+        visible: true,
+        z: 0
+      });
+    }
+
     ensureLayerDrawer(eventsMap, 'events-layer-list');
     renderLayerList(eventsMap, __eventsGeomLayers, 'events-layer-list');
-    return;
+  } finally {
+    __eventsLayersLoading = false;
   }
-
-  const data = await r.json();
-  const tables = (data.tables || []).filter(x => x.geomType === 'line' || x.geomType === 'polygon');
-
-  for(const t of tables){
-    const gr = await fetch(`/api/geo/${encodeURIComponent(t.table)}`);
-    if(!gr.ok) continue;
-
-    const fc = await gr.json();
-    if(!fc.features || fc.features.length === 0) continue;
-
-    const layer = L.geoJSON(fc, {
-      style: ()=>({ weight: 4, opacity: 0.85 })
-    });
-
-    layer.addTo(eventsMap);
-
-    __eventsGeomLayers.push({
-      table: t.table,
-      geomType: t.geomType,
-      layer,
-      visible: true,
-      z: 0
-    });
-  }
-
-  ensureLayerDrawer(eventsMap, 'events-layer-list');
-  renderLayerList(eventsMap, __eventsGeomLayers, 'events-layer-list');
 }
 
 
@@ -3048,6 +3052,11 @@ function buildFilterDropdown(tableKey, column, data) {
         return String(a).localeCompare(String(b));
       }
     }
+    // Numeric sort for regions pk columns
+    if (tableKey === 'regions' && (column === 'pk1' || column === 'pk2')) {
+      const na = parseFloat(a), nb = parseFloat(b);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    }
     return String(a).localeCompare(String(b));
   });
   
@@ -4548,26 +4557,29 @@ function ensureRegionsMap() {
   ensureMapLegend(regionsMap);
 }
 
+let __regionsLayersLoaded = false;
 async function loadAllRegionsLayers() {
   if (!regionsMap) return;
 
-  // 1. Load geometry layers (line + polygon tables from DB)
   await loadGeomLayersForRegionsMap();
-
-  // 2. Load POLYGON_FILE layer
   await loadRegionsPolygonFileLayer();
-
-  // 3. Load event markers
   syncRegionsEventMarkers();
 
-  // 4. Load raster layers
   try {
     await loadRasterLayers(regionsMap, __regionsGeomLayers, 'regions-layer-list');
   } catch (e) { console.warn('[regions] raster error:', e); }
 
-  // 5. Render layer list ONCE with all layers
   ensureLayerDrawer(regionsMap, 'regions-layer-list');
   renderLayerList(regionsMap, __regionsGeomLayers, 'regions-layer-list');
+
+  __regionsLayersLoaded = true;
+  // After all layers loaded, highlight+zoom to current 5 grids
+  setTimeout(() => {
+    if (regionsMap) {
+      regionsMap.invalidateSize();
+      syncRegionsMapHighlightPage();
+    }
+  }, 300);
 }
 
 async function loadGeomLayersForRegionsMap() {
@@ -5247,14 +5259,17 @@ function initTabs() {
       }
 
       // Invalidate regions map when switching to regions tab
-      if (targetTab === 'regions-tab' && regionsMap) {
+      if (targetTab === 'regions-tab') {
         setTimeout(() => {
-          regionsMap.invalidateSize();
-          // Reload layers if none loaded yet
-          if (__regionsGeomLayers.length === 0) {
-            loadAllRegionsLayers();
+          if (regionsMap) {
+            regionsMap.invalidateSize();
+            if (!__regionsLayersLoaded) {
+              loadAllRegionsLayers();
+            } else {
+              syncRegionsMapHighlightPage();
+            }
           }
-        }, 150);
+        }, 200);
       }
       // Invalidate events map when switching to events tab
       if (targetTab === 'events-tab' && eventsMap) {
