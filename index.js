@@ -1961,11 +1961,40 @@ app.post('/api/auth/register', async (req, res) => {
 
     try {
       const verifyLink = `${req.protocol}://${req.get('host')}/api/auth/verify?token=${verifyToken}`;
+      const lang = req.body?.lang === 'en' ? 'en' : 'tr';
+
+      const defaultHtml = lang === 'en'
+        ? `<p>Hello <b>${username}</b>,</p><p>Click <a href="${verifyLink}">here</a> to verify your account.</p><p>This link is valid for 24 hours.</p>`
+        : `<p>Merhaba <b>${username}</b>,</p><p>Hesabını doğrulamak için <a href="${verifyLink}">buraya tıkla</a>.</p><p>Bağlantı 24 saat geçerlidir.</p>`;
+
+      const subject = lang === 'en' ? 'Email Verification' : 'E-posta doğrulama';
+
+      // Read optional custom HTML from file (e.g. terms & conditions)
+      let customHtml = '';
+      const customFile = process.env.VERIFY_EMAIL_TEXT;
+      if (customFile) {
+        try {
+          const filePath = path.join(__dirname, 'public', customFile);
+          if (fs.existsSync(filePath)) {
+            let raw = fs.readFileSync(filePath, 'utf8');
+            // Replace placeholders
+            const logoUrl = process.env.SITE_LOGO_URL || '';
+            if (logoUrl) {
+              const fullLogo = logoUrl.startsWith('http') ? logoUrl : `${req.protocol}://${req.get('host')}${logoUrl}`;
+              raw = raw.replace(/\{\{SITE_LOGO_URL\}\}/g, fullLogo);
+            }
+            customHtml = raw;
+          }
+        } catch (e) {
+          console.warn('[register] custom email text error:', e.message);
+        }
+      }
+
       await transporter.sendMail({
         from: MAIL_FROM,
         to: email,
-        subject: 'E-posta doğrulama',
-        html: `<p>Merhaba <b>${username}</b>,</p><p>Hesabını doğrulamak için <a href="${verifyLink}">buraya tıkla</a>.</p><p>Bağlantı 24 saat geçerlidir.</p>`,
+        subject,
+        html: defaultHtml + customHtml,
       });
     } catch (mailErr) {
       console.error('[register] mail send error:', mailErr);
