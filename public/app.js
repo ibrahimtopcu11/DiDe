@@ -416,8 +416,9 @@ function ensureLayerDrawer(mapInstance, listId){
   // panel
   const panel = document.createElement('div');
   panel.className = 'layer-panel hidden';
-  panel.style.maxHeight = '300px';
-  panel.style.overflowY = 'auto';
+  // Force max-height with important to override any CSS
+  panel.style.setProperty('max-height', '320px', 'important');
+  panel.style.setProperty('overflow-y', 'auto', 'important');
   // Prevent wheel from zooming the map while scrolling the panel
   panel.addEventListener('wheel', (e) => {
     e.stopPropagation();
@@ -459,9 +460,9 @@ function renderLayerList(mapInstance, layers, listId){
   const list = mapInstance.getContainer().querySelector('#' + listId);
   if(!list) return;
   list.innerHTML = '';
-  // Force scroll on the list container
-  list.style.maxHeight = '250px';
-  list.style.overflowY = 'auto';
+  // Force scroll on the list container with !important to win over any CSS
+  list.style.setProperty('max-height', '240px', 'important');
+  list.style.setProperty('overflow-y', 'auto', 'important');
   list.style.scrollbarWidth = 'thin';
   // Prevent map zoom when scrolling inside list
   list.addEventListener('wheel', (e) => e.stopPropagation(), { passive: false });
@@ -4594,23 +4595,31 @@ async function loadAllRegionsLayers() {
 async function loadGeomLayersForRegionsMap() {
   if (!regionsMap) return;
 
-  // Remove ALL existing layers from map and clear array
+  // Only remove "regular" geom layers from map - NOT special ones (markers, polygon file)
   __regionsGeomLayers.forEach(x => {
+    if (x.table === '__events_markers' || x.table === (APP_CONFIG.polygonTable || '__polygon_env')) {
+      return; // Skip special layers
+    }
     try { regionsMap.removeLayer(x.layer); } catch {}
   });
-  __regionsGeomLayers = [];
+  // Keep special layers in the array, remove only regular ones
+  __regionsGeomLayers = __regionsGeomLayers.filter(x =>
+    x.table === '__events_markers' || x.table === (APP_CONFIG.polygonTable || '__polygon_env')
+  );
 
   try {
     const r = await fetch('/api/geom-tables');
     if (!r.ok) return;
     const data = await r.json();
     const polyTable = (APP_CONFIG.polygonTable || '').toLowerCase();
-    // Filter out the POLYGON_FILE table to avoid duplicates
     const tables = (data.tables || [])
       .filter(x => x.geomType === 'line' || x.geomType === 'polygon')
       .filter(x => x.table.toLowerCase() !== polyTable);
 
     for (const tbl of tables) {
+      // Dedupe
+      if (__regionsGeomLayers.some(x => x.table === tbl.table)) continue;
+
       const gr = await fetch(`/api/geo/${encodeURIComponent(tbl.table)}`);
       if (!gr.ok) continue;
       const fc = await gr.json();
@@ -4632,7 +4641,6 @@ async function loadGeomLayersForRegionsMap() {
   } catch (e) {
     console.warn('[regions] geom layers error:', e);
   }
-  // Don't render list yet — wait for loadAllRegionsLayers to finish
 }
 
 async function loadRegionsPolygonFileLayer() {
@@ -4647,6 +4655,11 @@ async function loadRegionsPolygonFileLayer() {
     L.geoJSON(geojson, {
       style: { color: '#3b82f6', weight: 1, fillOpacity: 0.05, fillColor: '#3b82f6' }
     }).addTo(regionsPolygonLayer);
+
+    // Ensure polygon layer is on the map
+    if (!regionsMap.hasLayer(regionsPolygonLayer)) {
+      regionsPolygonLayer.addTo(regionsMap);
+    }
 
     // Add to layer list (check duplicate)
     const polyName = APP_CONFIG.polygonTable || '__polygon_env';
@@ -4681,7 +4694,12 @@ function syncRegionsEventMarkers() {
     regionsMarkersLayer.addLayer(m);
   });
 
-  // Add markers to layer list (check duplicate)
+  // Ensure markers layer is on the map (it might have been removed)
+  if (!regionsMap.hasLayer(regionsMarkersLayer)) {
+    regionsMarkersLayer.addTo(regionsMap);
+  }
+
+  // Add markers entry to layer list (check duplicate)
   if (!__regionsGeomLayers.some(x => x.table === '__events_markers')) {
     __regionsGeomLayers.push({
       table: '__events_markers',
