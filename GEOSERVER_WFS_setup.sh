@@ -23,6 +23,8 @@ USERS_TABLE="public.users"
 USERS_USERNAME_COL="username"
 USERS_ACTIVE_COL="is_active"
 USERS_PWHASH_COL="password_hash"
+USERS_ROLE_COL="role"
+USERS_ROLE_VALUE="supervisor"
 
 ENV_FILE=""
 declare -a TABLE_SPECS=()
@@ -39,31 +41,34 @@ looks_numeric() { [[ "$1" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; }
 usage() {
   cat <<'USAGE'
 Usage:
-  sudo bash GEOSERVER_WFS_setup.sh [options] --tables "table,col,val" ["table,col,val" ...]
+  sudo bash GEOSERVER_WFS_setup.sh [options]
 
 Required:
   --env-file PATH
   --gs-admin-user USER
   --gs-admin-pass PASS
-  --tables "t,c,v" ...    (repeatable)
 
 Optional:
+  --event-icons "o_id,icon.svg" ...  (up to 3, for per-type layers with icons)
   --workspace NAME
   --datastore NAME
   --db-schema NAME
-  --users-table schema.table
-  --users-username-col COL
-  --users-active-col COL
-  --users-pwhash-col COL
   --geoserver-version VER
   --node-upstream HOST:PORT
   --server-name NAME
+
+Example:
+  sudo bash GEOSERVER_WFS_setup.sh \
+    --env-file ./.env \
+    --gs-admin-user admin --gs-admin-pass geoserver \
+    --event-icons "1,WC.svg" "2,Coworking.svg" "3,ATM.svg"
 USAGE
 }
 
 GS_ADMIN_USER=""
 GS_ADMIN_PASS=""
 NGINX_SERVER_NAME="_"
+declare -a EVENT_ICON_SPECS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,11 +79,6 @@ while [[ $# -gt 0 ]]; do
     --datastore) DATASTORE="$2"; shift 2;;
     --db-schema) DB_SCHEMA="$2"; shift 2;;
 
-    --users-table) USERS_TABLE="$2"; shift 2;;
-    --users-username-col) USERS_USERNAME_COL="$2"; shift 2;;
-    --users-active-col) USERS_ACTIVE_COL="$2"; shift 2;;
-    --users-pwhash-col) USERS_PWHASH_COL="$2"; shift 2;;
-
     --geoserver-version)
       GEOSERVER_VERSION="$2"
       GEOSERVER_ZIP_URL="https://sourceforge.net/projects/geoserver/files/GeoServer/${GEOSERVER_VERSION}/geoserver-${GEOSERVER_VERSION}-bin.zip/download"
@@ -87,10 +87,10 @@ while [[ $# -gt 0 ]]; do
     --node-upstream) NODE_UPSTREAM="$2"; shift 2;;
     --server-name) NGINX_SERVER_NAME="$2"; shift 2;;
 
-    --tables)
+    --event-icons)
       shift
       while [[ $# -gt 0 && "$1" != --* ]]; do
-        TABLE_SPECS+=("$1")
+        EVENT_ICON_SPECS+=("$1")
         shift
       done
       ;;
@@ -103,7 +103,6 @@ done
 [[ -f "$ENV_FILE" ]] || die "env file not found: $ENV_FILE"
 [[ -n "$GS_ADMIN_USER" ]] || die "--gs-admin-user is required"
 [[ -n "$GS_ADMIN_PASS" ]] || die "--gs-admin-pass is required"
-[[ ${#TABLE_SPECS[@]} -gt 0 ]] || die "--tables is required (at least one spec)"
 is_root || die "Run as root (use sudo)."
 
 log "Loading environment from $ENV_FILE"
@@ -220,6 +219,8 @@ USERS_TABLE=${USERS_TABLE}
 USERS_USERNAME_COL=${USERS_USERNAME_COL}
 USERS_ACTIVE_COL=${USERS_ACTIVE_COL}
 USERS_PWHASH_COL=${USERS_PWHASH_COL}
+USERS_ROLE_COL=${USERS_ROLE_COL}
+USERS_ROLE_VALUE=${USERS_ROLE_VALUE}
 EOF
 chown root:geoserver-auth "$AUTH_ENV_FILE"
 chmod 640 "$AUTH_ENV_FILE"
@@ -251,13 +252,19 @@ USERS_TABLE = get_env("USERS_TABLE", "public.users")
 USERS_USERNAME_COL = get_env("USERS_USERNAME_COL", "username")
 USERS_ACTIVE_COL = get_env("USERS_ACTIVE_COL", "is_active")
 USERS_PWHASH_COL = get_env("USERS_PWHASH_COL", "password_hash")
+USERS_ROLE_COL = get_env("USERS_ROLE_COL", "role")
+USERS_ROLE_VALUE = get_env("USERS_ROLE_VALUE", "supervisor")
 
 def check_user(username: str, password: str) -> bool:
-    sql = f"SELECT {USERS_PWHASH_COL} FROM {USERS_TABLE} WHERE {USERS_USERNAME_COL}=%s AND {USERS_ACTIVE_COL}=true LIMIT 1"
+    sql = (
+        f"SELECT {USERS_PWHASH_COL} FROM {USERS_TABLE} "
+        f"WHERE {USERS_USERNAME_COL}=%s AND {USERS_ACTIVE_COL}=true "
+        f"AND {USERS_ROLE_COL}=%s LIMIT 1"
+    )
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (username,))
+                cur.execute(sql, (username, USERS_ROLE_VALUE))
                 row = cur.fetchone()
                 if not row or not row[0]:
                     return False
@@ -546,75 +553,96 @@ if ! gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores" /tmp/gs_datasto
   gs_put_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}" /tmp/gs_datastore.xml
 fi
 
-log "Publishing WFS layers"
+log "Publishing WFS layers from olay table (active=true only)"
+
+OLAY_TABLE="olay"
+OLAY_SCHEMA="${DB_SCHEMA}"
+
+# Check olay table exists
+olay_exists="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT 1 FROM information_schema.tables WHERE table_schema=$(sql_quote_literal "$OLAY_SCHEMA") AND table_name=$(sql_quote_literal "$OLAY_TABLE") LIMIT 1;")"
+[[ "$olay_exists" == "1" ]] || die "Table ${OLAY_SCHEMA}.${OLAY_TABLE} not found"
+
+geom_col="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT f_geometry_column FROM geometry_columns WHERE f_table_schema=$(sql_quote_literal "$OLAY_SCHEMA") AND f_table_name=$(sql_quote_literal "$OLAY_TABLE") LIMIT 1;")"
+[[ -n "$geom_col" ]] || die "No geometry column found on ${OLAY_SCHEMA}.${OLAY_TABLE}"
+
+srid="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT srid FROM geometry_columns WHERE f_table_schema=$(sql_quote_literal "$OLAY_SCHEMA") AND f_table_name=$(sql_quote_literal "$OLAY_TABLE") AND f_geometry_column=$(sql_quote_literal "$geom_col") LIMIT 1;")"
+[[ -n "$srid" && "$srid" != "0" ]] || srid="4326"
+
 PUBLISH_ERRORS=0
-for spec in "${TABLE_SPECS[@]}"; do
-  IFS=',' read -r TABLE_NAME FILTER_COL FILTER_VAL <<<"$spec" || true
-  if [[ -z "${TABLE_NAME:-}" ]]; then
-    echo "WARNING: Bad --tables spec: '$spec' — skipping" >&2
-    PUBLISH_ERRORS=$((PUBLISH_ERRORS+1))
+
+# Collect icon o_ids for exclusion from default layer
+declare -a ICON_OIDS=()
+
+# --- Per-event-type layers with SLD icons ---
+for spec in "${EVENT_ICON_SPECS[@]}"; do
+  IFS=',' read -r OID ICON_FILE <<<"$spec" || true
+  if [[ -z "$OID" || -z "$ICON_FILE" ]]; then
+    echo "WARNING: Bad --event-icons spec: '$spec' — skipping" >&2
     continue
   fi
 
-  FILTER_COL="${FILTER_COL:-*}"
-  FILTER_VAL="${FILTER_VAL:-*}"
+  ICON_OIDS+=("$OID")
 
-  schema="$DB_SCHEMA"
-  table="$TABLE_NAME"
-  if [[ "$TABLE_NAME" == *.* ]]; then
-    schema="${TABLE_NAME%%.*}"
-    table="${TABLE_NAME##*.}"
-  fi
+  # Get event type name for the layer title
+  type_name="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT o_adi FROM ${OLAY_SCHEMA}.olaylar WHERE o_id=${OID} AND active=true LIMIT 1;" 2>/dev/null || true)"
+  [[ -n "$type_name" ]] || type_name="type_${OID}"
+  
+  view_name="wfs_olay_type_${OID}"
 
-  exists="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT 1 FROM information_schema.tables WHERE table_schema=$(sql_quote_literal "$schema") AND table_name=$(sql_quote_literal "$table") LIMIT 1;")"
-  if [[ "$exists" != "1" ]]; then
-    echo "WARNING: Table not found: ${schema}.${table} — skipping" >&2
-    PUBLISH_ERRORS=$((PUBLISH_ERRORS+1))
-    continue
-  fi
+  log "Creating view ${view_name} for event type ${OID} (${type_name})"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
+    "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${view_name} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true AND olay_turu=${OID};"
 
-  geom_col="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT f_geometry_column FROM geometry_columns WHERE f_table_schema=$(sql_quote_literal "$schema") AND f_table_name=$(sql_quote_literal "$table") LIMIT 1;")"
-  if [[ -z "$geom_col" ]]; then
-    echo "WARNING: No geometry column found on ${schema}.${table} — skipping" >&2
-    PUBLISH_ERRORS=$((PUBLISH_ERRORS+1))
-    continue
-  fi
+  # Create SLD style with icon
+  STYLE_NAME="style_olay_type_${OID}"
+  ICON_URL_PATH="/${ICON_FILE}"
 
-  log "Found geometry column '${geom_col}' on ${schema}.${table}"
+  cat >/tmp/gs_sld_${OID}.xml <<SLDEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor version="1.0.0"
+  xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd"
+  xmlns="http://www.opengis.net/sld"
+  xmlns:ogc="http://www.opengis.net/ogc"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <NamedLayer>
+    <Name>${view_name}</Name>
+    <UserStyle>
+      <Title>${type_name}</Title>
+      <FeatureTypeStyle>
+        <Rule>
+          <PointSymbolizer>
+            <Graphic>
+              <ExternalGraphic>
+                <OnlineResource xlink:href="${ICON_URL_PATH}"/>
+                <Format>image/svg+xml</Format>
+              </ExternalGraphic>
+              <Size>24</Size>
+            </Graphic>
+          </PointSymbolizer>
+        </Rule>
+      </FeatureTypeStyle>
+    </UserStyle>
+  </NamedLayer>
+</StyledLayerDescriptor>
+SLDEOF
 
-  srid="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT srid FROM geometry_columns WHERE f_table_schema=$(sql_quote_literal "$schema") AND f_table_name=$(sql_quote_literal "$table") AND f_geometry_column=$(sql_quote_literal "$geom_col") LIMIT 1;")"
-  if [[ -z "$srid" || "$srid" == "0" ]]; then
-    srid="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT COALESCE(NULLIF(ST_SRID(\"${geom_col}\"),0), 4326) FROM ${schema}.${table} WHERE \"${geom_col}\" IS NOT NULL LIMIT 1;" 2>/dev/null || true)"
-    [[ -n "$srid" ]] || srid="4326"
-  fi
+  # Upload SLD style
+  curl -sS -u "$GS_AUTH" -XPOST \
+    -H "Content-Type: application/vnd.ogc.sld+xml" \
+    -d @"/tmp/gs_sld_${OID}.xml" \
+    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles?name=${STYLE_NAME}" >/dev/null 2>&1 || \
+  curl -sS -u "$GS_AUTH" -XPUT \
+    -H "Content-Type: application/vnd.ogc.sld+xml" \
+    -d @"/tmp/gs_sld_${OID}.xml" \
+    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles/${STYLE_NAME}" >/dev/null 2>&1 || true
 
-  publish_name="$table"
-  native_name="$table"
-
-  if [[ "$FILTER_COL" != "*" && "$FILTER_VAL" != "*" ]]; then
-    view_suffix="$(sanitize_ident "${table}_${FILTER_COL}_${FILTER_VAL}")"
-    view_name="wfs_${view_suffix}"
-
-    if looks_numeric "$FILTER_VAL"; then
-      where_expr="\"${FILTER_COL}\" = ${FILTER_VAL}"
-    else
-      where_expr="\"${FILTER_COL}\" = $(sql_quote_literal "$FILTER_VAL")"
-    fi
-
-    log "Creating/Updating VIEW ${schema}.${view_name} AS SELECT * FROM ${schema}.${table} WHERE ${where_expr}"
-    psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c "CREATE OR REPLACE VIEW ${schema}.${view_name} AS SELECT * FROM ${schema}.${table} WHERE ${where_expr};"
-
-    publish_name="$view_name"
-    native_name="$view_name"
-  else
-    log "Publishing full table ${schema}.${table}"
-  fi
-
+  # Publish feature type
   cat >/tmp/gs_featuretype.xml <<EOF
 <featureType>
-  <name>${publish_name}</name>
-  <nativeName>${native_name}</nativeName>
-  <title>${publish_name}</title>
+  <name>${view_name}</name>
+  <nativeName>${view_name}</nativeName>
+  <title>${type_name}</title>
   <srs>EPSG:${srid}</srs>
   <projectionPolicy>FORCE_DECLARED</projectionPolicy>
   <enabled>true</enabled>
@@ -622,12 +650,51 @@ for spec in "${TABLE_SPECS[@]}"; do
 EOF
 
   if gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}/featuretypes" /tmp/gs_featuretype.xml; then
-    log "Published: ${publish_name} (EPSG:${srid}, geom: ${geom_col})"
+    log "Published: ${view_name} (${type_name}) with icon ${ICON_FILE}"
   else
-    echo "WARNING: Failed to publish ${publish_name} — skipping" >&2
+    echo "WARNING: Failed to publish ${view_name}" >&2
     PUBLISH_ERRORS=$((PUBLISH_ERRORS+1))
   fi
+
+  # Apply style to layer
+  curl -sS -u "$GS_AUTH" -XPUT \
+    -H "Content-Type: application/json" \
+    -d "{\"layer\":{\"defaultStyle\":{\"name\":\"${STYLE_NAME}\"}}}" \
+    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/layers/${WORKSPACE}:${view_name}" >/dev/null 2>&1 || true
+
 done
+
+# --- Default layer: all other event types (no icon) ---
+default_view="wfs_olay_default"
+
+if [[ ${#ICON_OIDS[@]} -gt 0 ]]; then
+  exclude_list=$(IFS=,; echo "${ICON_OIDS[*]}")
+  log "Creating default view (excluding event types: ${exclude_list})"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
+    "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${default_view} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true AND (olay_turu IS NULL OR olay_turu NOT IN (${exclude_list}));"
+else
+  log "Creating default view (all active events)"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
+    "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${default_view} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true;"
+fi
+
+cat >/tmp/gs_featuretype.xml <<EOF
+<featureType>
+  <name>${default_view}</name>
+  <nativeName>${default_view}</nativeName>
+  <title>Events (default)</title>
+  <srs>EPSG:${srid}</srs>
+  <projectionPolicy>FORCE_DECLARED</projectionPolicy>
+  <enabled>true</enabled>
+</featureType>
+EOF
+
+if gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}/featuretypes" /tmp/gs_featuretype.xml; then
+  log "Published: ${default_view} (default, no icon)"
+else
+  echo "WARNING: Failed to publish ${default_view}" >&2
+  PUBLISH_ERRORS=$((PUBLISH_ERRORS+1))
+fi
 
 if [[ $PUBLISH_ERRORS -gt 0 ]]; then
   echo "WARNING: ${PUBLISH_ERRORS} table(s) had errors (see above)" >&2
