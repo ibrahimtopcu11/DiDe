@@ -417,6 +417,8 @@ function ensureLayerDrawer(mapInstance, listId){
   // panel
   const panel = document.createElement('div');
   panel.className = 'layer-panel hidden';
+  panel.style.maxHeight = '300px';
+  panel.style.overflowY = 'auto';
 
   panel.innerHTML = `
     <div class="layer-panel-header">
@@ -4274,8 +4276,9 @@ function syncEventsMapWithFilteredEvents(){
   if (__eventsSelectedRows.size > 0) return;
 
   const state = tableStates.events;
-  const hasFilter = state?.filters && Object.keys(state.filters).length > 0;
-  const hasSpecialFilter = state?.specialFilters && Object.keys(state.specialFilters).length > 0;
+  // Check if any filter is actually active (not all values selected)
+  const hasFilter = state?.filters && Object.values(state.filters).some(f => Array.isArray(f) && f.length > 0);
+  const hasSpecialFilter = state?.specialFilters && (state.specialFilters.typeGood === false || state.specialFilters.typeBad === false);
 
   let list;
   if (hasFilter || hasSpecialFilter) {
@@ -4675,80 +4678,58 @@ function syncRegionsMap() {
   setTimeout(() => regionsMap.invalidateSize(), 100);
 
   if (__regionsSelectedRows.size === 0) {
-    regionsHighlightLayer?.clearLayers();
-    // Show current page events on map
-    syncRegionsMapWithCurrentPage();
+    syncRegionsMapHighlightPage();
     return;
   }
   syncRegionsMapWithSelection();
 }
 
-function syncRegionsMapWithCurrentPage() {
-  if (!regionsMap || !regionsMarkersLayer) return;
-  regionsMarkersLayer.clearLayers();
+/* Highlight current page grids (red) + zoom. All markers stay visible. */
+function syncRegionsMapHighlightPage() {
+  if (!regionsMap) return;
   regionsHighlightLayer?.clearLayers();
 
   const state = tableStates.regions;
-  const hasFilter = state.filters && Object.keys(state.filters).length > 0;
+  const hasActiveFilter = state.filters && Object.values(state.filters).some(f => Array.isArray(f) && f.length > 0);
 
   let visibleRows;
-  if (hasFilter) {
-    // Show ALL filtered data
+  if (hasActiveFilter) {
     visibleRows = state.filtered || [];
   } else {
-    // Show only current page's 5 rows
     const page = state.currentPage || 1;
     const ps = state.pageSize || 5;
     const start = (page - 1) * ps;
     visibleRows = (state.filtered || []).slice(start, start + ps);
   }
 
-  const bounds = [];
-
-  // Highlight grids
   visibleRows.forEach(row => {
     if (row.geojson) {
       L.geoJSON(row.geojson, {
-        style: { color: '#3b82f6', weight: 2, fillOpacity: 0.15, fillColor: '#93c5fd' }
+        style: { color: '#ef4444', weight: 3, fillOpacity: 0.25, fillColor: '#fca5a5' }
       }).addTo(regionsHighlightLayer);
     }
-    // Show events in these grids
-    (row._events || []).forEach(e => {
-      const lat = parseFloat(e.enlem), lng = parseFloat(e.boylam);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const m = L.marker([lat, lng], { icon: iconForEvent(e) });
-      m.bindPopup(`<b>${e.olay_turu_adi || '-'}</b><br>${e.aciklama || ''}`);
-      regionsMarkersLayer.addLayer(m);
-      bounds.push([lat, lng]);
-    });
   });
 
-  // Zoom to visible data
   if (regionsHighlightLayer.getLayers().length) {
-    regionsMap.fitBounds(regionsHighlightLayer.getBounds().pad(0.1));
-  } else if (bounds.length) {
-    regionsMap.fitBounds(L.latLngBounds(bounds).pad(0.2));
+    regionsMap.fitBounds(regionsHighlightLayer.getBounds().pad(0.15));
+  } else if (regionsPolygonLayer?.getLayers().length) {
+    regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
   }
 }
 
 function syncRegionsMapWithSelection() {
   if (!regionsMap || !regionsHighlightLayer) return;
   regionsHighlightLayer.clearLayers();
-  regionsMarkersLayer.clearLayers();
 
   const allData = tableStates.regions.filtered || [];
   const selectedData = allData.filter(r => __regionsSelectedRows.has(r._idx));
 
   if (selectedData.length === 0) {
-    // No row selected — show all events
-    syncRegionsEventMarkers();
-    if (regionsPolygonLayer?.getLayers().length) {
-      regionsMap.fitBounds(regionsPolygonLayer.getBounds().pad(0.05));
-    }
+    syncRegionsMapHighlightPage();
     return;
   }
 
-  // Highlight selected polygons
+  // Highlight selected grids
   selectedData.forEach(row => {
     if (row.geojson) {
       L.geoJSON(row.geojson, {
@@ -4757,23 +4738,8 @@ function syncRegionsMapWithSelection() {
     }
   });
 
-  // Show only events from selected grids
-  const bounds = [];
-  selectedData.forEach(row => {
-    (row._events || []).forEach(e => {
-      const lat = parseFloat(e.enlem), lng = parseFloat(e.boylam);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const m = L.marker([lat, lng], { icon: iconForEvent(e) });
-      m.bindPopup(`<b>${e.olay_turu_adi || '-'}</b><br>${e.aciklama || ''}`);
-      regionsMarkersLayer.addLayer(m);
-      bounds.push([lat, lng]);
-    });
-  });
-
   if (regionsHighlightLayer.getLayers().length) {
     regionsMap.fitBounds(regionsHighlightLayer.getBounds().pad(0.15));
-  } else if (bounds.length) {
-    regionsMap.fitBounds(L.latLngBounds(bounds).pad(0.2));
   }
 }
 
