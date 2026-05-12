@@ -326,77 +326,38 @@ EOF
 systemctl daemon-reload
 systemctl enable --now geoserver-auth
 
-log "Configuring Nginx reverse proxy + WFS auth_request"
+log "Configuring Nginx for WFS auth_request"
 
-# ── Detect SSL certificates (Let's Encrypt or custom) ──
-SSL_CERT=""
-SSL_KEY=""
-SSL_DOMAIN=""
-
-# Try to detect domain from existing nginx configs
-for f in /etc/nginx/sites-available/*; do
-  [[ -f "$f" ]] || continue
-  d="$(grep -oP 'server_name\s+\K[^;_\s]+' "$f" 2>/dev/null | head -1)"
-  if [[ -n "$d" && "$d" != "_" && "$d" != "localhost" ]]; then
-    SSL_DOMAIN="$d"
-    break
-  fi
-done
-
-# Use --server-name if provided and not "_"
-if [[ "$NGINX_SERVER_NAME" != "_" && -n "$NGINX_SERVER_NAME" ]]; then
-  SSL_DOMAIN="$NGINX_SERVER_NAME"
-fi
-
-# Check for Let's Encrypt cert
-if [[ -n "$SSL_DOMAIN" ]]; then
-  LE_CERT="/etc/letsencrypt/live/${SSL_DOMAIN}/fullchain.pem"
-  LE_KEY="/etc/letsencrypt/live/${SSL_DOMAIN}/privkey.pem"
-  if [[ -f "$LE_CERT" && -f "$LE_KEY" ]]; then
-    SSL_CERT="$LE_CERT"
-    SSL_KEY="$LE_KEY"
-    log "Found Let's Encrypt SSL for: ${SSL_DOMAIN}"
-  fi
-fi
-
-# ── Write Nginx config ──
 NGINX_CONF="/etc/nginx/sites-available/${NGINX_SITE_NAME}"
 
-# Backup existing config
+# ── Only ADD WFS blocks if they don't already exist — never overwrite the whole config ──
 if [[ -f "$NGINX_CONF" ]]; then
-  cp "$NGINX_CONF" "${NGINX_CONF}.bak.$(date +%s)"
-fi
+  if grep -q '/_auth_wfs' "$NGINX_CONF"; then
+    log "WFS blocks already exist in nginx config — skipping nginx changes"
+  else
+    log "Injecting WFS location blocks into existing nginx config"
+    cp "$NGINX_CONF" "${NGINX_CONF}.bak.$(date +%s)"
 
-# WFS location blocks (shared between HTTP and HTTPS)
-WFS_LOCATIONS=$(cat <<'WFSBLOCKS'
+    # Build the WFS snippet to inject (before the last closing brace of the main server block)
+    WFS_SNIPPET=$(cat <<WFSEOF
+
+    # ── WFS Auth (injected by GEOSERVER_WFS_setup.sh) ──
     location = /_auth_wfs {
         internal;
-        proxy_pass http://AUTH_BIND_PLACEHOLDER/auth;
+        proxy_pass http://${AUTH_BIND}/auth;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
-        proxy_set_header Authorization $http_authorization;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header Host $host;
-    }
-
-    location / {
-        proxy_pass http://NODE_UPSTREAM_PLACEHOLDER;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        client_max_body_size 50M;
+        proxy_set_header Authorization \$http_authorization;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header Host \$host;
     }
 
     location /geoserver/ {
-        proxy_pass http://GS_UPSTREAM_PLACEHOLDER/geoserver/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_buffering off;
         proxy_read_timeout 120;
     }
@@ -405,62 +366,128 @@ WFS_LOCATIONS=$(cat <<'WFSBLOCKS'
         auth_request /_auth_wfs;
         error_page 401 = @wfs_401;
         proxy_set_header Authorization "";
-        proxy_pass http://GS_UPSTREAM_PLACEHOLDER/geoserver/wfs;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_buffering off;
         proxy_read_timeout 300;
-        proxy_connect_timeout 60;
-        proxy_redirect off;
     }
 
     location ^~ /geoserver/wfs {
         auth_request /_auth_wfs;
         error_page 401 = @wfs_401;
         proxy_set_header Authorization "";
-        proxy_pass http://GS_UPSTREAM_PLACEHOLDER/geoserver/wfs;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_buffering off;
         proxy_read_timeout 300;
-        proxy_connect_timeout 60;
-        proxy_redirect off;
     }
 
     location @wfs_401 {
         add_header WWW-Authenticate 'Basic realm="DiDe WFS"' always;
         return 401;
     }
-WFSBLOCKS
+    # ── End WFS blocks ──
+WFSEOF
 )
 
-# Replace placeholders
-WFS_LOCATIONS="${WFS_LOCATIONS//AUTH_BIND_PLACEHOLDER/${AUTH_BIND}}"
-WFS_LOCATIONS="${WFS_LOCATIONS//NODE_UPSTREAM_PLACEHOLDER/${NODE_UPSTREAM}}"
-WFS_LOCATIONS="${WFS_LOCATIONS//GS_UPSTREAM_PLACEHOLDER/${GEOSERVER_UPSTREAM}}"
+    # Find the FIRST "server {" block's closing "}" and inject BEFORE it
+    # Use python for reliable multi-line insertion
+    python3 <<PYEOF
+import re
+with open("${NGINX_CONF}", "r") as f:
+    content = f.read()
 
-if [[ -n "$SSL_CERT" && -n "$SSL_KEY" ]]; then
-  # ── SSL + HTTP redirect config ──
-  cat >"$NGINX_CONF" <<EOF
-# HTTPS server (DiDe + GeoServer + WFS)
+snippet = """${WFS_SNIPPET}"""
+
+# Find the closing brace of the first server block that has "listen 443" or "location /"
+# Insert before the last "}" of that block
+# Simple approach: find "location / {" block end, insert after it
+if "location /geoserver/" not in content:
+    # Find the last "}" before a "server {" or end of file in the first server block
+    lines = content.split("\\n")
+    inserted = False
+    result = []
+    brace_depth = 0
+    in_server = False
+    for i, line in enumerate(lines):
+        if "server {" in line or "server{" in line:
+            in_server = True
+            brace_depth = 0
+        if in_server:
+            brace_depth += line.count("{") - line.count("}")
+            if brace_depth == 0 and in_server and not inserted:
+                result.append(snippet)
+                inserted = True
+                in_server = False
+        result.append(line)
+    if not inserted:
+        # Fallback: insert before the very last "}"
+        for i in range(len(result)-1, -1, -1):
+            if "}" in result[i]:
+                result.insert(i, snippet)
+                break
+    with open("${NGINX_CONF}", "w") as f:
+        f.write("\\n".join(result))
+else:
+    print("geoserver location already exists, skipping")
+PYEOF
+
+  fi
+else
+  log "No existing nginx config found at ${NGINX_CONF} — creating minimal config"
+
+  # Detect SSL
+  SSL_DOMAIN=""
+  for f in /etc/nginx/sites-available/*; do
+    [[ -f "$f" ]] || continue
+    d="$(grep -oP 'server_name\s+\K[^;_\s]+' "$f" 2>/dev/null | head -1)"
+    if [[ -n "$d" && "$d" != "_" && "$d" != "localhost" ]]; then
+      SSL_DOMAIN="$d"; break
+    fi
+  done
+  [[ "$NGINX_SERVER_NAME" != "_" && -n "$NGINX_SERVER_NAME" ]] && SSL_DOMAIN="$NGINX_SERVER_NAME"
+
+  SSL_CERT="" SSL_KEY=""
+  if [[ -n "$SSL_DOMAIN" ]]; then
+    LE="/etc/letsencrypt/live/${SSL_DOMAIN}"
+    [[ -f "$LE/fullchain.pem" && -f "$LE/privkey.pem" ]] && SSL_CERT="$LE/fullchain.pem" && SSL_KEY="$LE/privkey.pem"
+  fi
+
+  if [[ -n "$SSL_CERT" ]]; then
+    cat >"$NGINX_CONF" <<EOF
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
     server_name ${SSL_DOMAIN};
-
     ssl_certificate ${SSL_CERT};
     ssl_certificate_key ${SSL_KEY};
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    client_max_body_size 50M;
 
-${WFS_LOCATIONS}
+    location / {
+        proxy_pass http://${NODE_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location = /_auth_wfs { internal; proxy_pass http://${AUTH_BIND}/auth; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header Authorization \$http_authorization; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header Host \$host; }
+    location /geoserver/ { proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; proxy_buffering off; proxy_read_timeout 120; }
+    location ^~ /wfs { auth_request /_auth_wfs; error_page 401 = @wfs_401; proxy_set_header Authorization ""; proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; proxy_buffering off; proxy_read_timeout 300; }
+    location ^~ /geoserver/wfs { auth_request /_auth_wfs; error_page 401 = @wfs_401; proxy_set_header Authorization ""; proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; proxy_buffering off; proxy_read_timeout 300; }
+    location @wfs_401 { add_header WWW-Authenticate 'Basic realm="DiDe WFS"' always; return 401; }
 }
-
-# HTTP → HTTPS redirect
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -468,26 +495,26 @@ server {
     return 301 https://\$host\$request_uri;
 }
 EOF
-  log "Nginx configured with SSL for ${SSL_DOMAIN}"
-else
-  # ── HTTP-only config (no SSL) ──
-  cat >"$NGINX_CONF" <<EOF
-# HTTP server (DiDe + GeoServer + WFS) — no SSL
+  else
+    cat >"$NGINX_CONF" <<EOF
 server {
     listen 80 default_server;
-    listen [::]:80 default_server;
-    server_name ${NGINX_SERVER_NAME};
-
-${WFS_LOCATIONS}
+    server_name _;
+    client_max_body_size 50M;
+    location / { proxy_pass http://${NODE_UPSTREAM}; proxy_http_version 1.1; proxy_set_header Upgrade \$http_upgrade; proxy_set_header Connection "upgrade"; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; }
+    location = /_auth_wfs { internal; proxy_pass http://${AUTH_BIND}/auth; proxy_pass_request_body off; proxy_set_header Content-Length ""; proxy_set_header Authorization \$http_authorization; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header Host \$host; }
+    location /geoserver/ { proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; proxy_buffering off; proxy_read_timeout 120; }
+    location ^~ /wfs { auth_request /_auth_wfs; error_page 401 = @wfs_401; proxy_set_header Authorization ""; proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; proxy_buffering off; proxy_read_timeout 300; }
+    location ^~ /geoserver/wfs { auth_request /_auth_wfs; error_page 401 = @wfs_401; proxy_set_header Authorization ""; proxy_pass http://${GEOSERVER_UPSTREAM}/geoserver/wfs; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; proxy_buffering off; proxy_read_timeout 300; }
+    location @wfs_401 { add_header WWW-Authenticate 'Basic realm="DiDe WFS"' always; return 401; }
 }
 EOF
-  log "Nginx configured (HTTP only, no SSL certificate found)"
+  fi
+  ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
+  rm -f /etc/nginx/sites-enabled/default || true
 fi
 
-ln -sf "$NGINX_CONF" "/etc/nginx/sites-enabled/${NGINX_SITE_NAME}"
-# Remove only the default site, NOT other custom sites
-rm -f /etc/nginx/sites-enabled/default || true
-nginx -t
+nginx -t || die "Nginx config test failed — your original config was preserved in .bak"
 systemctl reload nginx
 
 log "Checking Postgres connectivity"
@@ -553,74 +580,104 @@ if ! gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores" /tmp/gs_datasto
   gs_put_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}" /tmp/gs_datastore.xml
 fi
 
-log "Publishing WFS layers from olay table (active=true only)"
+log "Publishing single WFS layer with per-type SLD icons"
 
 OLAY_TABLE="olay"
 OLAY_SCHEMA="${DB_SCHEMA}"
 
-# Check olay table exists
 olay_exists="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT 1 FROM information_schema.tables WHERE table_schema=$(sql_quote_literal "$OLAY_SCHEMA") AND table_name=$(sql_quote_literal "$OLAY_TABLE") LIMIT 1;")"
 [[ "$olay_exists" == "1" ]] || die "Table ${OLAY_SCHEMA}.${OLAY_TABLE} not found"
 
 geom_col="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT f_geometry_column FROM geometry_columns WHERE f_table_schema=$(sql_quote_literal "$OLAY_SCHEMA") AND f_table_name=$(sql_quote_literal "$OLAY_TABLE") LIMIT 1;")"
-[[ -n "$geom_col" ]] || die "No geometry column found on ${OLAY_SCHEMA}.${OLAY_TABLE}"
+[[ -n "$geom_col" ]] || die "No geometry column on ${OLAY_SCHEMA}.${OLAY_TABLE}"
 
 srid="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT srid FROM geometry_columns WHERE f_table_schema=$(sql_quote_literal "$OLAY_SCHEMA") AND f_table_name=$(sql_quote_literal "$OLAY_TABLE") AND f_geometry_column=$(sql_quote_literal "$geom_col") LIMIT 1;")"
 [[ -n "$srid" && "$srid" != "0" ]] || srid="4326"
 
-PUBLISH_ERRORS=0
+# ── 1. Create SQL view: active events only ──
+VIEW_NAME="wfs_olay_active"
+log "Creating view ${VIEW_NAME} (active=true)"
+psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
+  "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${VIEW_NAME} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true;"
 
-# Collect icon o_ids for exclusion from default layer
-declare -a ICON_OIDS=()
+# ── 2. Copy SVG icons to GeoServer styles/icons/ ──
+ICONS_DIR="${GEOSERVER_DATA_DIR}/styles/icons"
+mkdir -p "$ICONS_DIR"
+chown geoserver:geoserver "$ICONS_DIR"
 
-# --- Per-event-type layers with SLD icons ---
+ENV_DIR="$(dirname "$ENV_FILE")"
+
 for spec in "${EVENT_ICON_SPECS[@]}"; do
   IFS=',' read -r OID ICON_FILE <<<"$spec" || true
-  if [[ -z "$OID" || -z "$ICON_FILE" ]]; then
-    echo "WARNING: Bad --event-icons spec: '$spec' — skipping" >&2
-    continue
-  fi
+  [[ -n "$ICON_FILE" ]] || continue
 
-  ICON_OIDS+=("$OID")
-
-  # Get event type name for the layer title
-  type_name="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT o_adi FROM ${OLAY_SCHEMA}.olaylar WHERE o_id=${OID} AND active=true LIMIT 1;" 2>/dev/null || true)"
-  [[ -n "$type_name" ]] || type_name="type_${OID}"
-  
-  view_name="wfs_olay_type_${OID}"
-
-  log "Creating view ${view_name} for event type ${OID} (${type_name})"
-  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
-    "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${view_name} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true AND olay_turu=${OID};"
-
-  # ── Copy SVG icon to GeoServer styles directory ──
-  STYLE_NAME="style_olay_type_${OID}"
-  ENV_DIR="$(dirname "$ENV_FILE")"
-  SVG_SOURCE=""
-
-  # Search for the SVG in multiple locations
-  for candidate in \
-    "${ENV_DIR}/public/${ICON_FILE}" \
-    "${ENV_DIR}/${ICON_FILE}" \
-    "/var/www/dide/DiDe/public/${ICON_FILE}" \
-    "/var/www/dide/DiDe/${ICON_FILE}"; do
-    if [[ -f "$candidate" ]]; then
-      SVG_SOURCE="$candidate"
-      break
-    fi
+  SVG_SRC=""
+  for p in "${ENV_DIR}/public/${ICON_FILE}" "${ENV_DIR}/${ICON_FILE}" "/var/www/dide/DiDe/public/${ICON_FILE}"; do
+    [[ -f "$p" ]] && SVG_SRC="$p" && break
   done
 
-  if [[ -n "$SVG_SOURCE" ]]; then
-    log "Copying ${ICON_FILE} → ${GEOSERVER_DATA_DIR}/styles/"
-    cp "$SVG_SOURCE" "${GEOSERVER_DATA_DIR}/styles/${ICON_FILE}"
-    chown geoserver:geoserver "${GEOSERVER_DATA_DIR}/styles/${ICON_FILE}"
-    chmod 644 "${GEOSERVER_DATA_DIR}/styles/${ICON_FILE}"
+  if [[ -n "$SVG_SRC" ]]; then
+    cp "$SVG_SRC" "${ICONS_DIR}/${ICON_FILE}"
+    chown geoserver:geoserver "${ICONS_DIR}/${ICON_FILE}"
+    chmod 644 "${ICONS_DIR}/${ICON_FILE}"
+    log "Copied icon: ${ICON_FILE} → ${ICONS_DIR}/"
   else
-    echo "WARNING: SVG file not found: ${ICON_FILE} — layer will have no icon" >&2
+    echo "WARNING: SVG not found: ${ICON_FILE}" >&2
   fi
+done
 
-  # ── Create SLD style referencing the SVG (filename only — GeoServer resolves from styles dir) ──
-  cat >/tmp/gs_sld_${OID}.xml <<SLDEOF
+# ── 3. Build multi-rule SLD style ──
+STYLE_NAME="style_dide_events"
+SLD_RULES=""
+
+for spec in "${EVENT_ICON_SPECS[@]}"; do
+  IFS=',' read -r OID ICON_FILE <<<"$spec" || true
+  [[ -n "$OID" && -n "$ICON_FILE" ]] || continue
+
+  type_name="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT o_adi FROM ${OLAY_SCHEMA}.olaylar WHERE o_id=${OID} AND active=true LIMIT 1;" 2>/dev/null || true)"
+  [[ -n "$type_name" ]] || type_name="Type ${OID}"
+
+  SLD_RULES+="
+        <Rule>
+          <Name>${type_name}</Name>
+          <Title>${type_name}</Title>
+          <ogc:Filter>
+            <ogc:PropertyIsEqualTo>
+              <ogc:PropertyName>olay_turu</ogc:PropertyName>
+              <ogc:Literal>${OID}</ogc:Literal>
+            </ogc:PropertyIsEqualTo>
+          </ogc:Filter>
+          <PointSymbolizer>
+            <Graphic>
+              <ExternalGraphic>
+                <OnlineResource xlink:type=\"simple\" xlink:href=\"icons/${ICON_FILE}\"/>
+                <Format>image/svg+xml</Format>
+              </ExternalGraphic>
+              <Size>32</Size>
+            </Graphic>
+          </PointSymbolizer>
+        </Rule>"
+done
+
+# Default rule — plain circle for all other types
+SLD_RULES+='
+        <Rule>
+          <Name>default</Name>
+          <Title>Other Events</Title>
+          <ElseFilter/>
+          <PointSymbolizer>
+            <Graphic>
+              <Mark>
+                <WellKnownName>circle</WellKnownName>
+                <Fill><CssParameter name="fill">#3b82f6</CssParameter></Fill>
+                <Stroke><CssParameter name="stroke">#1e40af</CssParameter><CssParameter name="stroke-width">1</CssParameter></Stroke>
+              </Mark>
+              <Size>10</Size>
+            </Graphic>
+          </PointSymbolizer>
+        </Rule>'
+
+cat >/tmp/gs_sld_events.xml <<SLDEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <StyledLayerDescriptor version="1.0.0"
   xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd"
@@ -629,99 +686,56 @@ for spec in "${EVENT_ICON_SPECS[@]}"; do
   xmlns:xlink="http://www.w3.org/1999/xlink"
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <NamedLayer>
-    <Name>${view_name}</Name>
+    <Name>${VIEW_NAME}</Name>
     <UserStyle>
-      <Title>${type_name}</Title>
-      <FeatureTypeStyle>
-        <Rule>
-          <PointSymbolizer>
-            <Graphic>
-              <ExternalGraphic>
-                <OnlineResource xlink:href="${ICON_FILE}"/>
-                <Format>image/svg+xml</Format>
-              </ExternalGraphic>
-              <Size>24</Size>
-            </Graphic>
-          </PointSymbolizer>
-        </Rule>
+      <Title>DiDe Events</Title>
+      <FeatureTypeStyle>${SLD_RULES}
       </FeatureTypeStyle>
     </UserStyle>
   </NamedLayer>
 </StyledLayerDescriptor>
 SLDEOF
 
-  # ── Upload SLD style (create or update) ──
-  sld_code="$(curl -sS -o /dev/null -w "%{http_code}" -u "$GS_AUTH" -XPOST \
-    -H "Content-Type: application/vnd.ogc.sld+xml" \
-    -d @"/tmp/gs_sld_${OID}.xml" \
-    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles?name=${STYLE_NAME}" 2>/dev/null || true)"
+# Upload SLD
+sld_code="$(curl -sS -o /dev/null -w "%{http_code}" -u "$GS_AUTH" -XPOST \
+  -H "Content-Type: application/vnd.ogc.sld+xml" \
+  -d @/tmp/gs_sld_events.xml \
+  "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles?name=${STYLE_NAME}" 2>/dev/null || true)"
 
-  if [[ "$sld_code" != "201" ]]; then
-    curl -sS -u "$GS_AUTH" -XPUT \
-      -H "Content-Type: application/vnd.ogc.sld+xml" \
-      -d @"/tmp/gs_sld_${OID}.xml" \
-      "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles/${STYLE_NAME}" >/dev/null 2>&1 || true
-  fi
-  log "SLD style '${STYLE_NAME}' uploaded"
-
-  # Publish feature type
-  cat >/tmp/gs_featuretype.xml <<EOF
-<featureType>
-  <name>${view_name}</name>
-  <nativeName>${view_name}</nativeName>
-  <title>${type_name}</title>
-  <srs>EPSG:${srid}</srs>
-  <projectionPolicy>FORCE_DECLARED</projectionPolicy>
-  <enabled>true</enabled>
-</featureType>
-EOF
-
-  if gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}/featuretypes" /tmp/gs_featuretype.xml; then
-    log "Published: ${view_name} (${type_name}) with icon ${ICON_FILE}"
-  else
-    echo "WARNING: Failed to publish ${view_name}" >&2
-    PUBLISH_ERRORS=$((PUBLISH_ERRORS+1))
-  fi
-
-  # Apply style to layer
+if [[ "$sld_code" != "201" ]]; then
   curl -sS -u "$GS_AUTH" -XPUT \
-    -H "Content-Type: application/json" \
-    -d "{\"layer\":{\"defaultStyle\":{\"name\":\"${STYLE_NAME}\"}}}" \
-    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/layers/${WORKSPACE}:${view_name}" >/dev/null 2>&1 || true
-
-done
-
-# --- Default layer: all other event types (no icon) ---
-default_view="wfs_olay_default"
-
-if [[ ${#ICON_OIDS[@]} -gt 0 ]]; then
-  exclude_list=$(IFS=,; echo "${ICON_OIDS[*]}")
-  log "Creating default view (excluding event types: ${exclude_list})"
-  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
-    "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${default_view} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true AND (olay_turu IS NULL OR olay_turu NOT IN (${exclude_list}));"
-else
-  log "Creating default view (all active events)"
-  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
-    "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${default_view} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true;"
+    -H "Content-Type: application/vnd.ogc.sld+xml" \
+    -d @/tmp/gs_sld_events.xml \
+    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles/${STYLE_NAME}" >/dev/null 2>&1 || true
 fi
+log "SLD style '${STYLE_NAME}' uploaded with ${#EVENT_ICON_SPECS[@]} icon rules + default"
 
+# ── 4. Publish single feature type ──
 cat >/tmp/gs_featuretype.xml <<EOF
 <featureType>
-  <name>${default_view}</name>
-  <nativeName>${default_view}</nativeName>
-  <title>Events (default)</title>
+  <name>${VIEW_NAME}</name>
+  <nativeName>${VIEW_NAME}</nativeName>
+  <title>DiDe Events</title>
   <srs>EPSG:${srid}</srs>
   <projectionPolicy>FORCE_DECLARED</projectionPolicy>
   <enabled>true</enabled>
 </featureType>
 EOF
 
+PUBLISH_ERRORS=0
 if gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}/featuretypes" /tmp/gs_featuretype.xml; then
-  log "Published: ${default_view} (default, no icon)"
+  log "Published: ${VIEW_NAME} (single layer, EPSG:${srid})"
 else
-  echo "WARNING: Failed to publish ${default_view}" >&2
-  PUBLISH_ERRORS=$((PUBLISH_ERRORS+1))
+  echo "WARNING: Failed to publish ${VIEW_NAME}" >&2
+  PUBLISH_ERRORS=1
 fi
+
+# Apply style
+curl -sS -u "$GS_AUTH" -XPUT \
+  -H "Content-Type: application/json" \
+  -d "{\"layer\":{\"defaultStyle\":{\"name\":\"${STYLE_NAME}\"}}}" \
+  "http://${GEOSERVER_UPSTREAM}/geoserver/rest/layers/${WORKSPACE}:${VIEW_NAME}" >/dev/null 2>&1 || true
+log "Style '${STYLE_NAME}' applied to layer '${VIEW_NAME}'"
 
 if [[ $PUBLISH_ERRORS -gt 0 ]]; then
   echo "WARNING: ${PUBLISH_ERRORS} table(s) had errors (see above)" >&2
