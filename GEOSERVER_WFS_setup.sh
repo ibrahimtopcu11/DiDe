@@ -746,13 +746,18 @@ curl -fsS "http://${GEOSERVER_UPSTREAM}/geoserver/rest/workspaces/${WORKSPACE}/d
 
 echo ""
 echo " Done."
-if [[ -n "$SSL_CERT" && -n "$SSL_DOMAIN" ]]; then
-  echo "Site:          https://${SSL_DOMAIN}/"
-  echo "GeoServer UI:  https://${SSL_DOMAIN}/geoserver/"
-  echo "WFS URL:       https://${SSL_DOMAIN}/geoserver/wfs?service=WFS&request=GetCapabilities"
+
+# Detect domain from nginx config for output
+_domain="$(grep -oP 'server_name\s+\K[^;_\s]+' "/etc/nginx/sites-available/${NGINX_SITE_NAME}" 2>/dev/null | head -1 || true)"
+_has_ssl="$(grep -c 'listen.*443.*ssl' "/etc/nginx/sites-available/${NGINX_SITE_NAME}" 2>/dev/null || true)"
+
+if [[ "$_has_ssl" -gt 0 && -n "$_domain" ]]; then
+  echo "Site:          https://${_domain}/"
+  echo "GeoServer UI:  https://${_domain}/geoserver/"
+  echo "WFS URL:       https://${_domain}/geoserver/wfs?service=WFS&request=GetCapabilities"
   echo "Test:"
-  echo "  curl -sk https://${SSL_DOMAIN}/geoserver/wfs?service=WFS&request=GetCapabilities | head"
-  echo "  curl -sku 'USERNAME:PASSWORD' https://${SSL_DOMAIN}/wfs?service=WFS&request=GetCapabilities | head"
+  echo "  curl -sk https://${_domain}/geoserver/wfs?service=WFS&request=GetCapabilities | head"
+  echo "  curl -sku 'USERNAME:PASSWORD' https://${_domain}/wfs?service=WFS&request=GetCapabilities | head"
 else
   echo "GeoServer UI:  http://<SERVER_IP>/geoserver/"
   echo "WFS URL:       http://<SERVER_IP>/geoserver/wfs?service=WFS&request=GetCapabilities"
