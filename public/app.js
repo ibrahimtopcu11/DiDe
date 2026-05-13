@@ -698,11 +698,11 @@ async function loadPolygonLayer() {
 
     __polygonLayer = L.geoJSON(fc, {
       style: () => ({
-        color: '#2563eb',
-        weight: 2,
-        opacity: 0.6,
-        fillColor: '#3b82f6',
-        fillOpacity: 0.08,
+        color: '#ccff00',
+        weight: 3,
+        opacity: 0.8,
+        fillColor: '#ccff00',
+        fillOpacity: 0.12,
         dashArray: '5,5'
       }),
       onEachFeature: (feature, layer) => {

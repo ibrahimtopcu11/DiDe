@@ -2671,3 +2671,23 @@ th:has(#btn-add-type){
 :root.theme-dark .layer-panel-header {
   background: var(--surface, #1e293b);
 }
+/* ===================== Leaflet Dark Theme ===================== */
+.theme-dark .leaflet-layer,
+.theme-dark .leaflet-control-zoom-in,
+.theme-dark .leaflet-control-zoom-out,
+.theme-dark .leaflet-control-attribution {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+.theme-dark .leaflet-container {
+  background-color: #1a1a2e;
+}
+.theme-dark .leaflet-marker-icon,
+.theme-dark .leaflet-marker-shadow,
+.theme-dark .leaflet-popup-content-wrapper,
+.theme-dark .leaflet-popup-tip,
+.theme-dark .leaflet-control-layers,
+.theme-dark .map-legend,
+.theme-dark .layer-drawer,
+.theme-dark .leaflet-div-icon {
+  filter: invert(100%) hue-rotate(180deg) brightness(105%) contrast(100%);
+}
