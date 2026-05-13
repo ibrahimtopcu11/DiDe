@@ -1,6 +1,5 @@
 // index.js 
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
-
+require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -28,9 +27,9 @@ const ALLOWED_EMAIL_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAIN || '')
   .map(d => d.trim().toLowerCase())
   .filter(Boolean);
 
-const SHOW_GOOD_EVENTS_ON_LOGIN = String(process.env.SHOW_GOOD_EVENTS_ON_LOGIN || '').trim().toLowerCase() === 'true';
-const SHOW_BAD_EVENTS_ON_LOGIN = String(process.env.SHOW_BAD_EVENTS_ON_LOGIN || '').trim().toLowerCase() === 'true';
 
+const SHOW_GOOD_EVENTS_ON_LOGIN = String(process.env.SHOW_GOOD_EVENTS_ON_LOGIN) === 'true';
+const SHOW_BAD_EVENTS_ON_LOGIN = String(process.env.SHOW_BAD_EVENTS_ON_LOGIN) === 'true';
 
 
 const QFIELD_SYNC_ROOT = process.env.QFIELD_SYNC_ROOT || '';              
