@@ -49,7 +49,6 @@ Required:
   --gs-admin-pass PASS
 
 Optional:
-  --event-icons "o_id,icon.svg" ...  (up to 3, for per-type layers with icons)
   --workspace NAME
   --datastore NAME
   --db-schema NAME
@@ -60,15 +59,13 @@ Optional:
 Example:
   sudo bash GEOSERVER_WFS_setup.sh \
     --env-file ./.env \
-    --gs-admin-user admin --gs-admin-pass geoserver \
-    --event-icons "1,WC.svg" "2,Coworking.svg" "3,ATM.svg"
+    --gs-admin-user admin --gs-admin-pass geoserver
 USAGE
 }
 
 GS_ADMIN_USER=""
 GS_ADMIN_PASS=""
 NGINX_SERVER_NAME="_"
-declare -a EVENT_ICON_SPECS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -87,13 +84,6 @@ while [[ $# -gt 0 ]]; do
     --node-upstream) NODE_UPSTREAM="$2"; shift 2;;
     --server-name) NGINX_SERVER_NAME="$2"; shift 2;;
 
-    --event-icons)
-      shift
-      while [[ $# -gt 0 && "$1" != --* ]]; do
-        EVENT_ICON_SPECS+=("$1")
-        shift
-      done
-      ;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (use --help)";;
   esac
@@ -580,7 +570,7 @@ if ! gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores" /tmp/gs_datasto
   gs_put_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}" /tmp/gs_datastore.xml
 fi
 
-log "Publishing single WFS layer with per-type SLD icons"
+log "Publishing WFS layer (olay table, active=true only)"
 
 OLAY_TABLE="olay"
 OLAY_SCHEMA="${DB_SCHEMA}"
@@ -594,148 +584,45 @@ geom_col="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c 
 srid="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT srid FROM geometry_columns WHERE f_table_schema=$(sql_quote_literal "$OLAY_SCHEMA") AND f_table_name=$(sql_quote_literal "$OLAY_TABLE") AND f_geometry_column=$(sql_quote_literal "$geom_col") LIMIT 1;")"
 [[ -n "$srid" && "$srid" != "0" ]] || srid="4326"
 
-# ── 1. Create SQL view: active events only ──
-VIEW_NAME="wfs_olay_active"
-log "Creating view ${VIEW_NAME} (active=true)"
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 -c \
-  "CREATE OR REPLACE VIEW ${OLAY_SCHEMA}.${VIEW_NAME} AS SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active=true;"
+log "Found: ${OLAY_SCHEMA}.${OLAY_TABLE} (geom: ${geom_col}, EPSG:${srid})"
 
-# ── 2. Copy SVG icons to GeoServer styles/icons/ ──
-ICONS_DIR="${GEOSERVER_DATA_DIR}/styles/icons"
-mkdir -p "$ICONS_DIR"
-chown geoserver:geoserver "$ICONS_DIR"
+# ── Use GeoServer SQL View with explicit primary key (prevents duplicate rows) ──
+LAYER_NAME="dide_events"
+SQL_VIEW_BODY="SELECT * FROM ${OLAY_SCHEMA}.${OLAY_TABLE} WHERE active = true"
 
-ENV_DIR="$(dirname "$ENV_FILE")"
-
-for spec in "${EVENT_ICON_SPECS[@]}"; do
-  IFS=',' read -r OID ICON_FILE <<<"$spec" || true
-  [[ -n "$ICON_FILE" ]] || continue
-
-  SVG_SRC=""
-  for p in "${ENV_DIR}/public/${ICON_FILE}" "${ENV_DIR}/${ICON_FILE}" "/var/www/dide/DiDe/public/${ICON_FILE}"; do
-    [[ -f "$p" ]] && SVG_SRC="$p" && break
-  done
-
-  if [[ -n "$SVG_SRC" ]]; then
-    cp "$SVG_SRC" "${ICONS_DIR}/${ICON_FILE}"
-    chown geoserver:geoserver "${ICONS_DIR}/${ICON_FILE}"
-    chmod 644 "${ICONS_DIR}/${ICON_FILE}"
-    log "Copied icon: ${ICON_FILE} → ${ICONS_DIR}/"
-  else
-    echo "WARNING: SVG not found: ${ICON_FILE}" >&2
-  fi
-done
-
-# ── 3. Build multi-rule SLD style ──
-STYLE_NAME="style_dide_events"
-SLD_RULES=""
-
-for spec in "${EVENT_ICON_SPECS[@]}"; do
-  IFS=',' read -r OID ICON_FILE <<<"$spec" || true
-  [[ -n "$OID" && -n "$ICON_FILE" ]] || continue
-
-  type_name="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tA -c "SELECT o_adi FROM ${OLAY_SCHEMA}.olaylar WHERE o_id=${OID} AND active=true LIMIT 1;" 2>/dev/null || true)"
-  [[ -n "$type_name" ]] || type_name="Type ${OID}"
-
-  SLD_RULES+="
-        <Rule>
-          <Name>${type_name}</Name>
-          <Title>${type_name}</Title>
-          <ogc:Filter>
-            <ogc:PropertyIsEqualTo>
-              <ogc:PropertyName>olay_turu</ogc:PropertyName>
-              <ogc:Literal>${OID}</ogc:Literal>
-            </ogc:PropertyIsEqualTo>
-          </ogc:Filter>
-          <PointSymbolizer>
-            <Graphic>
-              <ExternalGraphic>
-                <OnlineResource xlink:type=\"simple\" xlink:href=\"icons/${ICON_FILE}\"/>
-                <Format>image/svg+xml</Format>
-              </ExternalGraphic>
-              <Size>32</Size>
-            </Graphic>
-          </PointSymbolizer>
-        </Rule>"
-done
-
-# Default rule — plain circle for all other types
-SLD_RULES+='
-        <Rule>
-          <Name>default</Name>
-          <Title>Other Events</Title>
-          <ElseFilter/>
-          <PointSymbolizer>
-            <Graphic>
-              <Mark>
-                <WellKnownName>circle</WellKnownName>
-                <Fill><CssParameter name="fill">#3b82f6</CssParameter></Fill>
-                <Stroke><CssParameter name="stroke">#1e40af</CssParameter><CssParameter name="stroke-width">1</CssParameter></Stroke>
-              </Mark>
-              <Size>10</Size>
-            </Graphic>
-          </PointSymbolizer>
-        </Rule>'
-
-cat >/tmp/gs_sld_events.xml <<SLDEOF
-<?xml version="1.0" encoding="UTF-8"?>
-<StyledLayerDescriptor version="1.0.0"
-  xsi:schemaLocation="http://www.opengis.net/sld StyledLayerDescriptor.xsd"
-  xmlns="http://www.opengis.net/sld"
-  xmlns:ogc="http://www.opengis.net/ogc"
-  xmlns:xlink="http://www.w3.org/1999/xlink"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <NamedLayer>
-    <Name>${VIEW_NAME}</Name>
-    <UserStyle>
-      <Title>DiDe Events</Title>
-      <FeatureTypeStyle>${SLD_RULES}
-      </FeatureTypeStyle>
-    </UserStyle>
-  </NamedLayer>
-</StyledLayerDescriptor>
-SLDEOF
-
-# Upload SLD
-sld_code="$(curl -sS -o /dev/null -w "%{http_code}" -u "$GS_AUTH" -XPOST \
-  -H "Content-Type: application/vnd.ogc.sld+xml" \
-  -d @/tmp/gs_sld_events.xml \
-  "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles?name=${STYLE_NAME}" 2>/dev/null || true)"
-
-if [[ "$sld_code" != "201" ]]; then
-  curl -sS -u "$GS_AUTH" -XPUT \
-    -H "Content-Type: application/vnd.ogc.sld+xml" \
-    -d @/tmp/gs_sld_events.xml \
-    "http://${GEOSERVER_UPSTREAM}/geoserver/rest/styles/${STYLE_NAME}" >/dev/null 2>&1 || true
-fi
-log "SLD style '${STYLE_NAME}' uploaded with ${#EVENT_ICON_SPECS[@]} icon rules + default"
-
-# ── 4. Publish single feature type ──
 cat >/tmp/gs_featuretype.xml <<EOF
 <featureType>
-  <name>${VIEW_NAME}</name>
-  <nativeName>${VIEW_NAME}</nativeName>
+  <name>${LAYER_NAME}</name>
+  <nativeName>${LAYER_NAME}</nativeName>
   <title>DiDe Events</title>
   <srs>EPSG:${srid}</srs>
   <projectionPolicy>FORCE_DECLARED</projectionPolicy>
   <enabled>true</enabled>
+  <metadata>
+    <entry key="JDBC_VIRTUAL_TABLE">
+      <virtualTable>
+        <name>${LAYER_NAME}</name>
+        <sql>${SQL_VIEW_BODY}</sql>
+        <escapeSql>false</escapeSql>
+        <keyColumn>olay_id</keyColumn>
+        <geometry>
+          <name>${geom_col}</name>
+          <type>Point</type>
+          <srid>${srid}</srid>
+        </geometry>
+      </virtualTable>
+    </entry>
+  </metadata>
 </featureType>
 EOF
 
 PUBLISH_ERRORS=0
 if gs_post_xml "${GS_REST}/workspaces/${WORKSPACE}/datastores/${DATASTORE}/featuretypes" /tmp/gs_featuretype.xml; then
-  log "Published: ${VIEW_NAME} (single layer, EPSG:${srid})"
+  log "Published: ${LAYER_NAME} (EPSG:${srid}, PK: olay_id)"
 else
-  echo "WARNING: Failed to publish ${VIEW_NAME}" >&2
+  echo "WARNING: Failed to publish ${LAYER_NAME}" >&2
   PUBLISH_ERRORS=1
 fi
-
-# Apply style
-curl -sS -u "$GS_AUTH" -XPUT \
-  -H "Content-Type: application/json" \
-  -d "{\"layer\":{\"defaultStyle\":{\"name\":\"${STYLE_NAME}\"}}}" \
-  "http://${GEOSERVER_UPSTREAM}/geoserver/rest/layers/${WORKSPACE}:${VIEW_NAME}" >/dev/null 2>&1 || true
-log "Style '${STYLE_NAME}' applied to layer '${VIEW_NAME}'"
 
 if [[ $PUBLISH_ERRORS -gt 0 ]]; then
   echo "WARNING: ${PUBLISH_ERRORS} table(s) had errors (see above)" >&2
