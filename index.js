@@ -28,8 +28,10 @@ const ALLOWED_EMAIL_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAIN || '')
   .map(d => d.trim().toLowerCase())
   .filter(Boolean);
 
-const SHOW_GOOD_EVENTS_ON_LOGIN = String(process.env.SHOW_GOOD_EVENTS_ON_LOGIN) === 'true';
-const SHOW_BAD_EVENTS_ON_LOGIN = String(process.env.SHOW_BAD_EVENTS_ON_LOGIN) === 'true';
+const SHOW_GOOD_EVENTS_ON_LOGIN = String(process.env.SHOW_GOOD_EVENTS_ON_LOGIN || '').trim().toLowerCase() === 'true';
+const SHOW_BAD_EVENTS_ON_LOGIN = String(process.env.SHOW_BAD_EVENTS_ON_LOGIN || '').trim().toLowerCase() === 'true';
+
+
 
 const QFIELD_SYNC_ROOT = process.env.QFIELD_SYNC_ROOT || '';              
 const QFIELD_INGEST_INTERVAL_MS = parseInt(process.env.QFIELD_INGEST_INTERVAL_MS, 10);
